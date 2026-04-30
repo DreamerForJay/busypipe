@@ -106,7 +106,24 @@ powershell -ExecutionPolicy Bypass -File scripts\demo.ps1
 powershell -ExecutionPolicy Bypass -File scripts\test_store.ps1
 ```
 
-### 3. 手動測試 `lfilter`
+### 3. 在 Linux container 中跑完整 pipeline
+
+如果你和組員目前主要在 Windows 開發，可以直接透過 Docker 啟動 Linux 環境，驗證真正的 `lparser | lfilter | lstore`：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_linux_demo.ps1
+```
+
+這個腳本會在 Linux container 內：
+
+- 編譯 `lparser`
+- 編譯 `lfilter`
+- 編譯 `lstore`
+- 解析 `samples/access.log`
+- 過濾 `status >= 400`
+- 將結果寫入 `data/linux/errors.tsv`
+
+### 4. 手動測試 `lfilter`
 
 ```powershell
 @'
@@ -117,7 +134,7 @@ ip,time,method,path,status
 '@ | build\lfilter.exe --where "status>=400" --select "ip,path,status"
 ```
 
-### 4. 手動測試 `lstore`
+### 5. 手動測試 `lstore`
 
 ```powershell
 @'
