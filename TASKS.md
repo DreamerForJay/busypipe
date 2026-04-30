@@ -10,6 +10,7 @@
 - Issue #4: improve lstore storage behavior and TTL tests
 - Issue #5: add collaboration guide and contribution workflow
 - Issue #6: prepare BusyBox integration plan for standalone tools
+- Issue #7: add integration, demo, and benchmark workflow
 
 ## 角色分工
 
