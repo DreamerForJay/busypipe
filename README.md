@@ -169,6 +169,39 @@ powershell -ExecutionPolicy Bypass -File scripts\run_linux_demo.ps1
 
 ### 4. 手動測試 `lfilter`
 
+最穩定的 Windows 測試方式，是先建立一份 CSV 檔，再把檔案內容送進 `lfilter`。
+
+先建立測試檔：
+
+```powershell
+Set-Content data\sample.csv "ip,time,method,path,status" -Encoding ascii
+Add-Content data\sample.csv "192.168.0.2,30/Apr/2026:08:00:00 +0800,GET,/index.html,200" -Encoding ascii
+Add-Content data\sample.csv "192.168.0.3,30/Apr/2026:08:00:02 +0800,GET,/admin,404" -Encoding ascii
+Add-Content data\sample.csv "192.168.0.4,30/Apr/2026:08:00:03 +0800,POST,/login,500" -Encoding ascii
+```
+
+確認檔案內容：
+
+```powershell
+Get-Content data\sample.csv
+```
+
+再執行 `lfilter`：
+
+```powershell
+Get-Content data\sample.csv | build\lfilter.exe --where "status>=400" --select "ip,path,status"
+```
+
+預期輸出：
+
+```text
+ip,path,status
+192.168.0.3,/admin,404
+192.168.0.4,/login,500
+```
+
+也可以使用 here-string 方式直接送入：
+
 ```powershell
 @'
 ip,time,method,path,status
@@ -179,6 +212,45 @@ ip,time,method,path,status
 ```
 
 ### 5. 手動測試 `lstore`
+
+`lstore --get` 不會自己產生資料。  
+若要查詢某個 key，必須先透過 `--put` 把資料寫進資料檔。
+
+最穩定的 Windows 測試方式如下：
+
+先建立測試檔：
+
+```powershell
+Set-Content data\sample.csv "ip,time,method,path,status" -Encoding ascii
+Add-Content data\sample.csv "192.168.0.3,30/Apr/2026:08:00:02 +0800,GET,/admin,404" -Encoding ascii
+Add-Content data\sample.csv "192.168.0.4,30/Apr/2026:08:00:03 +0800,POST,/login,500" -Encoding ascii
+```
+
+寫入資料庫：
+
+```powershell
+Get-Content data\sample.csv | build\lstore.exe --db data\errors.tsv --put --key-field ip --ttl 3600
+```
+
+查詢資料：
+
+```powershell
+build\lstore.exe --db data\errors.tsv --get 192.168.0.4
+```
+
+預期輸出：
+
+```text
+192.168.0.4,30/Apr/2026:08:00:03 +0800,POST,/login,500
+```
+
+若要重新測試，建議先刪除舊資料檔：
+
+```powershell
+if (Test-Path data\errors.tsv) { Remove-Item data\errors.tsv -Force }
+```
+
+也可以使用 here-string 方式直接寫入：
 
 ```powershell
 @'
@@ -214,6 +286,51 @@ build\lstore.exe --db data\errors.tsv --cleanup
 - `lparser` 在本機僅能編譯為提示用版本
 - `lfilter` 與 `lstore` 可正常開發與驗證
 - 真正的 regex 解析功能需在 Linux 環境測試
+
+## 常見錯誤排除
+
+### 1. `lfilter` 只有印出 header，沒有資料列
+
+可能原因：
+
+- 輸入檔內容格式不正確
+- PowerShell here-string 貼上時斷掉
+- 輸入檔編碼造成內容異常
+
+建議解法：
+
+- 改用 `Set-Content` / `Add-Content` 先建立 `data\sample.csv`
+- 建檔時加上 `-Encoding ascii`
+- 先用 `Get-Content data\sample.csv` 確認內容
+
+### 2. `lstore --get` 沒有輸出
+
+可能原因：
+
+- 你還沒有先用 `--put` 寫入資料
+- 查詢的 key 不存在
+- 資料已過期
+- 查的是錯的資料檔
+
+建議解法：
+
+- 先確認有執行過 `--put`
+- 用 `build\lstore.exe --db data\errors.tsv --list` 查看目前資料
+- 若要重測，先刪除舊的 `data\errors.tsv`
+
+### 3. Windows 上 `lparser` 不能正常解析
+
+原因：
+
+- Windows + MinGW 環境沒有 POSIX `regex.h`
+
+解法：
+
+- 改用 Linux / Docker 執行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_linux_demo.ps1
+```
 
 ## 開發里程碑
 
