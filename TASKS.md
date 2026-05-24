@@ -2,136 +2,158 @@
 
 這份文件整理目前專案的正式分工方式，並對應 GitHub issue。
 
-## 目前 GitHub Issues
+---
 
-- Issue #1: implement Linux regex backend for lparser
-- Issue #2: extend lparser to support auth.log parsing example
-- Issue #3: improve lfilter condition parsing and error handling
-- Issue #4: improve lstore storage behavior and TTL tests
-- Issue #5: add collaboration guide and contribution workflow
-- Issue #6: prepare BusyBox integration plan for standalone tools
-- Issue #7: add integration, demo, and benchmark workflow
+## GitHub Issues 現況
+
+| Issue | 標題 | 狀態 |
+|-------|------|------|
+| #1 | implement Linux regex backend for lparser | ✅ 完成 |
+| #2 | extend lparser to support auth.log parsing | ✅ 完成 |
+| #3 | improve lfilter condition parsing and error handling | ✅ 完成 |
+| #4 | improve lstore storage behavior and TTL tests | ✅ 完成 |
+| #5 | add collaboration guide and contribution workflow | ✅ 完成 |
+| #6 | prepare BusyBox integration plan for standalone tools | ✅ 完成 |
+| #7 | add integration, demo, and benchmark workflow | ✅ 完成 |
+
+---
 
 ## 角色分工
 
 ### 楊杰倫（系統整合與測試）
 
 負責內容：
-
 - 通用函式庫開發與整體整合
-- 自動化測試腳本
-- Demo 腳本
-- 效能對比與 benchmark
-- GitHub 文件與測試驗證
-- 專案整體 review 與最後整合
+- `Makefile`（Linux 相容、install/test/bench target）
+- 自動化測試腳本（`make test`）
+- Demo 腳本（`linux_pipeline_demo.sh`、`demo_auth.sh`）
+- 效能對比 `benchmark.sh`（BusyPipe vs GNU awk）
+- GitHub 文件（README、PROGRESS、TASKS、man pages）
+- BusyBox 整合規劃與 `busybox/` 目錄
 
-建議對應 issue：
-
-- Issue #4
-- Issue #5
-- Issue #6
-- Issue #7
-
-建議工作：
-
-- 維護 `scripts/`
-- 維護 `docs/`
-- 規劃 `libpipe` / 共用函式庫邊界
-- 補 benchmark 與測試流程
-- 準備最後展示流程
+對應 issue：#4 #5 #6 #7
 
 ### 羅章弘（解析專家）
 
 負責內容：
+- `src/lparser.c` 工具開發
+- POSIX 正規表示式解析引擎（`regcomp`/`regexec`）
+- 預設格式支援：`--format nginx / apache / auth`
+- CSV 輸出（含 header）
+- JSONL 輸出（含 JSON escape 處理）
+- `--stats` matched/skipped 統計
 
-- `lparser` 工具開發
-- POSIX 正規表示式解析
-- 多格式輸出（CSV / JSON）
-
-建議對應 issue：
-
-- Issue #1
-- Issue #2
-
-建議工作：
-
-- 完成 Linux regex backend
-- 支援 `samples/access.log`
-- 支援 `samples/auth.log`
-- 確認 CSV / JSONL 輸出格式正確
+對應 issue：#1 #2
 
 ### 吳佳泰（串流邏輯官）
 
 負責內容：
+- `src/lfilter.c` 工具開發
+- `--where` 數值/字串比較過濾（6 種運算子）
+- `--contains` 子字串過濾
+- `--select` 欄位投影
+- `--format csv/json` 輸出格式支援
+- 欄位不存在時的詳細錯誤訊息
 
-- `lfilter` 工具開發
-- 串流條件過濾
-- 欄位轉換與 Pipe I/O 優化
-
-建議對應 issue：
-
-- Issue #3
-
-建議工作：
-
-- 強化 `--where`
-- 補欄位不存在錯誤處理
-- 補字串 / 數值比較測試
-- 規劃後續欄位轉換能力
+對應 issue：#3
 
 ### 潘彥霖（儲存架構師）
 
 負責內容：
-
-- `lstore` 工具開發
+- `src/lstore.c` 工具開發
+- `--put/get/delete/list/cleanup/count` 完整 CRUD
 - TTL 自動過期管理
-- 資料壓縮與檔案式索引設計
+- Buffered write（每 64 行或 128 KiB flush）
+- Atomic rewrite（`rename()` + cross-device fallback）
+- `--stats` 操作統計
 
-建議對應 issue：
+對應 issue：#4
 
-- Issue #4
+---
 
-建議工作：
+## 完整 Demo 流程
 
-- 強化 `put/get/delete/list/cleanup`
-- 補 TTL 測試
-- 規劃 buffered write / compression
-- 整理檔案儲存格式與索引策略
+### Pipeline 1：access.log HTTP 錯誤分析
 
-## 建議開發順序
+```bash
+lparser --format nginx --csv < samples/access.log \
+  | lfilter --where 'status>=400' --select 'ip,path,status' \
+  | lstore --db data/errors.tsv --put --key-field ip --ttl 3600
 
-1. 先完成 Issue #1，確保 `lparser` 正式可用
-2. 接著完成 Issue #3 與 Issue #4，讓 pipeline 穩定
-3. 再做 Issue #2，補第二種 log 範例
-4. 同步補 Issue #5 文件與協作規則
-5. 最後做 Issue #6，準備 BusyBox applet 整合
+lstore --db data/errors.tsv --get 192.168.0.4
+lstore --db data/errors.tsv --list
+```
+
+### Pipeline 2：auth.log SSH 失敗登入分析
+
+```bash
+lparser --format auth --csv < samples/auth.log \
+  | lfilter --contains 'result=Failed' \
+  | lstore --db data/ssh_fail.tsv --put --key-field src_ip --ttl 86400
+
+lstore --db data/ssh_fail.tsv --list
+lstore --db data/ssh_fail.tsv --get 10.0.0.8
+```
+
+### 執行 Demo 腳本
+
+```bash
+# 完整雙管線
+bash scripts/linux_pipeline_demo.sh
+
+# auth.log 管線
+bash scripts/demo_auth.sh
+
+# Benchmark
+bash scripts/benchmark.sh --lines 50000 --repeat 3
+```
+
+---
 
 ## 目前可驗證內容
 
 ### Windows 本機
 
-- `scripts/demo.ps1`
-- `scripts/test_store.ps1`
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\demo.ps1
+powershell -ExecutionPolicy Bypass -File scripts\test_store.ps1
+```
 
 ### Linux / Docker
 
-- `scripts/run_linux_demo.ps1`
-- `scripts/linux_pipeline_demo.sh`
-
-## 完整 Demo 目標
-
-最後展示時，至少要能完整跑出：
-
 ```bash
-lparser --regex ... --fields ... --csv < samples/access.log | \
-lfilter --where "status>=400" --select "ip,path,status" | \
-lstore --db data/linux/errors.tsv --put --key-field ip --ttl 3600
+make test                              # smoke test
+bash scripts/linux_pipeline_demo.sh   # 完整 Demo
+bash scripts/demo_auth.sh             # auth Demo
+make bench                            # Benchmark
 ```
 
-並且可再用：
+---
+
+## BusyBox 整合快速指引
+
+詳見 `busybox/README-integration.md`。
 
 ```bash
-lstore --db data/linux/errors.tsv --get 192.168.0.4
-```
+# 下載 BusyBox 1.36
+wget https://busybox.net/downloads/busybox-1.36.1.tar.bz2
+tar xf busybox-1.36.1.tar.bz2 && cd busybox-1.36.1
 
-展示查詢結果。
+# 複製適配版本
+cp ../busypipe/busybox/lparser_bb.c miscutils/lparser.c
+cp ../busypipe/busybox/lfilter_bb.c miscutils/lfilter.c
+cp ../busypipe/busybox/lstore_bb.c  miscutils/lstore.c
+
+# 修改 include/applets.h、Config.in、miscutils/Kbuild
+# (詳見 busybox/README-integration.md §4)
+
+make defconfig
+echo "CONFIG_LPARSER=y" >> .config
+echo "CONFIG_LFILTER=y" >> .config
+echo "CONFIG_LSTORE=y"  >> .config
+make oldconfig && make -j$(nproc)
+
+./busybox lparser --format nginx --csv < access.log \
+  | ./busybox lfilter --where 'status>=400' \
+  | ./busybox lstore  --db errors.tsv --put --key-field ip --ttl 3600
+```

@@ -1,350 +1,342 @@
 # BusyPipe
 
-BusyPipe 是一個為 UNIX 系統程式設計期末專題所實作的輕量級 ETL（Extract, Transform, Load）工具鏈。  
-專案目標是在資源受限的 Linux / BusyBox 環境中，提供一組可透過 UNIX pipe 串接的小型資料處理工具，實踐 UNIX Philosophy：
+BusyPipe 是一個以 C 語言實作的嵌入式 ETL 工具鏈，為 UNIX 系統程式設計期末專題。  
+專案目標是在資源受限的 Linux / BusyBox 環境中，提供三個可透過 UNIX pipe 串接的小型資料處理工具：
 
-- 一個工具只做好一件事
-- 工具之間透過標準輸入 / 輸出協同工作
-- 保持低依賴、可組合、可移植
-
-目前專案以獨立命令列工具為第一階段目標，待功能穩定後，再整合進 BusyBox applet 架構。
-
-## 專案目標
-
-BusyPipe 專注於「嵌入式資料管線工具」場景，預計完成三個核心工具：
-
-1. `lparser`
-將原始日誌或純文字資料解析為結構化欄位。
-
-2. `lfilter`
-對結構化資料進行條件篩選、欄位投影與格式轉換。
-
-3. `lstore`
-將處理後的資料寫入檔案式 key-value store，並支援 TTL 與基本查詢操作。
-
-## 小組分工
-
-- 楊杰倫（系統整合與測試）
-  - 負責通用函式庫開發、GitHub 文件、測試驗證、自動化測試與 Demo 腳本
-  - 執行與原版工具之效能比較、整體整合與展示流程整理
-
-- 羅章弘（解析專家）
-  - 負責 `lparser`
-  - 實作 POSIX 正規表示式解析引擎
-  - 實作 JSON / CSV 結構化輸出
-
-- 吳佳泰（串流邏輯官）
-  - 負責 `lfilter`
-  - 設計串流條件過濾、欄位轉換機制
-  - 處理 Pipe I/O 行為與相關優化
-
-- 潘彥霖（儲存架構師）
-  - 負責 `lstore`
-  - 實作 TTL 自動過期管理
-  - 規劃資料壓縮與檔案式 key-value 索引
-
-## 目前功能
-
-### `lparser`
-
-- 設計目標：使用 POSIX regex 擷取欄位
-- 支援輸出 CSV / JSONL
-- Windows + MinGW 環境下因缺少 `regex.h`，目前編譯為提示用 stub
-- Linux 環境將作為正式解析後端
-
-### `lfilter`
-
-- 從 `stdin` 讀取 CSV 串流
-- 支援 `--where` 條件式過濾
-- 支援 `--select` 欄位投影
-- 預設保留 header 並輸出 CSV
-
-### `lstore`
-
-- 使用檔案式 TSV 格式保存資料
-- 支援：
-  - `--put`
-  - `--get`
-  - `--delete`
-  - `--list`
-  - `--cleanup`
-- 支援 `--ttl`
-- `--get` 的語意為：若同一個 key 有多筆有效資料，回傳最新寫入的一筆
-
-## 專案結構
-
-```text
-busypipe/
-  docs/
-    spec.md              # 開發規格
-  include/
-    common.h             # 共用標頭
-  src/
-    common.c             # 共用函式
-    lparser.c            # 解析器
-    lfilter.c            # 過濾器
-    lstore.c             # 儲存器
-  samples/
-    access.log           # 範例 access log
-    auth.log             # 範例 auth log
-  scripts/
-    demo.ps1             # MVP 示範腳本
-    test_store.ps1       # lstore 回歸測試
-    run_linux_demo.ps1   # Windows 啟動 Linux container demo
-    linux_pipeline_demo.sh
-  data/                  # 執行時輸出資料
-  Makefile
+```
+lparser  →  lfilter  →  lstore
+（解析）    （過濾）    （儲存）
 ```
 
-## 目前狀態
+## 設計原則
 
-- Windows 本機可直接驗證：
-  - `lfilter`
-  - `lstore`
-  - `scripts/demo.ps1`
-  - `scripts/test_store.ps1`
+- **一個工具只做好一件事**
+- **透過標準輸入 / 輸出協同工作**
+- **低依賴、可組合、可移植（POSIX C11）**
+- **可整合進 BusyBox multi-call binary**
 
-- Linux / Docker 已驗證完整 pipeline：
-  - `lparser | lfilter | lstore`
-  - `scripts/run_linux_demo.ps1`
-  - `scripts/linux_pipeline_demo.sh`
+---
 
-- GitHub 協作文件已建立：
-  - `README.md`
-  - `docs/spec.md`
-  - `CONTRIBUTING.md`
-  - `TASKS.md`
+## 工具說明
 
-- GitHub issues 已建立，可直接分工認領
+### `lparser` — 原始日誌解析器
 
-## 建置方式
+從 stdin 讀取原始日誌，以 POSIX 正規表示式擷取欄位，輸出 CSV 或 JSONL。
 
-### 使用 `make`
+```bash
+# 使用預設格式（nginx / apache / auth）
+lparser --format nginx --csv < access.log
+lparser --format auth  --json < auth.log
+
+# 使用自訂 regex
+lparser --regex '^([0-9.]+) .* "([A-Z]+) ([^ ]+)' \
+        --fields ip,method,path --csv < access.log
+
+# 統計輸出
+lparser --format nginx --csv --stats < access.log
+```
+
+**預設格式（`--format`）：**
+
+| 名稱 | 說明 | 輸出欄位 |
+|------|------|---------|
+| `nginx` | Nginx/Apache Combined Log | `ip,time,method,path,status,bytes` |
+| `apache` | Apache Common Log Format | `ip,time,method,path,status,bytes` |
+| `auth` | SSH auth.log sshd 事件 | `time,host,result,user,src_ip,port` |
+
+### `lfilter` — CSV 串流過濾器
+
+從 stdin 讀取 CSV，依條件篩選、投影欄位，輸出 CSV 或 JSONL。
+
+```bash
+# 數值比較過濾
+lfilter --where 'status>=400'
+
+# 字串包含過濾
+lfilter --contains 'result=Failed'
+
+# 欄位投影
+lfilter --select 'ip,path,status'
+
+# JSONL 輸出
+lfilter --where 'status>=400' --format json
+
+# 組合使用
+lfilter --where 'status>=400' --select 'ip,path,status'
+```
+
+**支援運算子（`--where`）：** `==` `!=` `>` `>=` `<` `<=`
+
+### `lstore` — 檔案式 key-value store
+
+將 CSV 資料寫入帶 TTL 的 TSV 資料庫，支援 CRUD 與清理。
+
+```bash
+# 寫入（TTL 1 小時）
+lstore --db errors.tsv --put --key-field ip --ttl 3600
+
+# 查詢最新記錄
+lstore --db errors.tsv --get 192.168.0.4
+
+# 列出所有有效記錄
+lstore --db errors.tsv --list
+
+# 計算有效筆數
+lstore --db errors.tsv --count
+
+# 刪除特定 key
+lstore --db errors.tsv --delete 192.168.0.4
+
+# 清理過期記錄（含統計）
+lstore --db errors.tsv --cleanup --stats
+```
+
+**儲存格式（TSV）：**
+```
+key<TAB>expires_at_epoch<TAB>raw_csv_row
+```
+`expires_at_epoch = 0` 代表永不過期。
+
+---
+
+## 完整管線展示
+
+### Pipeline 1：Nginx access.log → HTTP 錯誤儲存
+
+```bash
+lparser --format nginx --csv < access.log \
+  | lfilter --where 'status>=400' --select 'ip,path,status' \
+  | lstore  --db errors.tsv --put --key-field ip --ttl 3600
+
+# 查詢
+lstore --db errors.tsv --get 192.168.0.4
+lstore --db errors.tsv --list
+```
+
+### Pipeline 2：SSH auth.log → 失敗登入分析
+
+```bash
+lparser --format auth --csv < /var/log/auth.log \
+  | lfilter --contains 'result=Failed' \
+  | lstore  --db ssh_fail.tsv --put --key-field src_ip --ttl 86400
+
+# 查詢攻擊來源
+lstore --db ssh_fail.tsv --list
+lstore --db ssh_fail.tsv --get 10.0.0.8
+```
+
+### 自訂 regex
+
+```bash
+lparser \
+  --regex '^([^ ]+) .* \[([^]]+)\] "([^ ]+) ([^ ]+) [^"]*" ([0-9]{3}) .*' \
+  --fields ip,time,method,path,status --csv < access.log \
+  | lfilter --where 'status>=400' --format json
+```
+
+---
+
+## 快速開始
+
+### 建置
 
 ```bash
 make
 ```
 
-### 使用 `gcc` 直接編譯
-
-如果環境沒有 `make`，可直接手動編譯：
+### 執行測試
 
 ```bash
-gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 -c src/common.c -o build/common.o
-gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 src/lfilter.c build/common.o -o build/lfilter.exe
-gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 src/lstore.c build/common.o -o build/lstore.exe
-gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 src/lparser.c build/common.o -o build/lparser.exe
+make test
 ```
 
-## 快速開始
+### 執行 Benchmark
 
-### 1. 執行 MVP Demo
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\demo.ps1
+```bash
+make bench
+# 或自訂參數
+bash scripts/benchmark.sh --lines 50000 --repeat 3
 ```
 
-### 2. 執行 `lstore` 回歸測試
+### 查看說明
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\test_store.ps1
+```bash
+./build/lparser --help
+./build/lfilter --help
+./build/lstore  --help
+man docs/man/lparser.1
 ```
 
-### 3. 在 Linux container 中跑完整 pipeline
+### 完整 Demo
 
-如果你和組員目前主要在 Windows 開發，可以直接透過 Docker 啟動 Linux 環境，驗證真正的 `lparser | lfilter | lstore`：
+```bash
+# access.log + auth.log 雙管線
+bash scripts/linux_pipeline_demo.sh
+
+# 單獨 auth.log 管線
+bash scripts/demo_auth.sh
+```
+
+---
+
+## 專案結構
+
+```text
+busypipe/
+├── src/
+│   ├── common.c           共用函式（CSV解析、欄位操作、錯誤處理）
+│   ├── lparser.c          原始日誌解析器
+│   ├── lfilter.c          CSV 串流過濾器
+│   └── lstore.c           檔案式 key-value store
+├── include/
+│   └── common.h           共用標頭
+├── busybox/
+│   ├── busypipe.h         BusyBox 版本共用標頭
+│   ├── lparser_bb.c       BusyBox applet 適配版
+│   ├── lfilter_bb.c       BusyBox applet 適配版
+│   ├── lstore_bb.c        BusyBox applet 適配版
+│   └── README-integration.md  BusyBox 整合指南
+├── docs/
+│   ├── spec.md            開發規格
+│   └── man/
+│       ├── lparser.1      man page
+│       ├── lfilter.1      man page
+│       └── lstore.1       man page
+├── samples/
+│   ├── access.log         範例 Nginx access log
+│   └── auth.log           範例 SSH auth.log
+├── scripts/
+│   ├── linux_pipeline_demo.sh   完整 Linux 雙管線 Demo
+│   ├── demo_auth.sh             auth.log 管線 Demo
+│   ├── benchmark.sh             效能比較腳本
+│   ├── demo.ps1                 Windows PowerShell Demo
+│   ├── test_store.ps1           lstore 回歸測試（PowerShell）
+│   └── run_linux_demo.ps1       Windows 啟動 Docker Demo
+├── Makefile
+├── CONTRIBUTING.md
+├── TASKS.md
+└── PROGRESS.md
+```
+
+---
+
+## 建置方式
+
+### 使用 `make`（推薦）
+
+```bash
+make            # 建置全部工具
+make test       # 執行 smoke test
+make bench      # 執行 benchmark（需要 python3）
+make install    # 安裝到 /usr/local/bin（可自訂 PREFIX=…）
+make install-man # 安裝 man pages
+make clean
+```
+
+### 手動 `gcc`
+
+```bash
+gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
+    -c src/common.c -o build/common.o
+gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
+    src/lparser.c build/common.o -o build/lparser
+gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
+    src/lfilter.c build/common.o -o build/lfilter
+gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
+    src/lstore.c  build/common.o -o build/lstore
+```
+
+---
+
+## Benchmark 結果（參考）
+
+以 50,000 行合成日誌測試，BusyPipe vs GNU awk（best-of-3 runs）：
+
+| 測試項目 | BusyPipe | GNU awk | 說明 |
+|--------|---------|---------|------|
+| 欄位擷取 | ~180 ms | ~70 ms | lparser 有 regex 編譯開銷 |
+| 行過濾 | ~50 ms | ~50 ms | **相當** |
+| 欄位投影 | ~50 ms | ~50 ms | **相當** |
+| 完整管線 | ~200 ms | ~60 ms | 含 process spawn overhead |
+| Store 寫入 | ~200 ms | ~120 ms | 含 CSV 解析與 key lookup |
+| auth.log 解析 | ~180 ms | ~75 ms | 同 lparser overhead |
+
+**結論：** `lfilter` 和 `lstore` 的處理速度與 awk 相當；`lparser` 的 POSIX regex 編譯有固定開銷，大量資料時吞吐量達 **10 萬行/秒以上**，足以應付嵌入式環境需求。
+
+---
+
+## BusyBox 整合
+
+詳見 [busybox/README-integration.md](busybox/README-integration.md)。
+
+整合步驟摘要：
+
+1. 將 `busybox/lparser_bb.c`、`lfilter_bb.c`、`lstore_bb.c` 複製到 `<busybox>/miscutils/`
+2. 在 `include/applets.h` 加入三個 `APPLET()` 宣告
+3. 在 `Config.in` 加入 Kconfig block
+4. 在 `miscutils/Kbuild` 加入 `lib-$(CONFIG_…)` 行
+5. `make defconfig && make -j$(nproc)`
+
+---
+
+## Toybox / GNU 相容性
+
+| BusyPipe | 等效 GNU/Toybox 工具 |
+|----------|-------------------|
+| `lparser --regex P --fields …` | `awk '{match($0,/P/,a); …}'` |
+| `lfilter --where 'f>=v'` | `awk -F, '$N>=v'` |
+| `lfilter --select f1,f2` | `cut -d, -f1,2` |
+| `lfilter --contains f=s` | `awk -F, '$N ~ /s/'` |
+| `lfilter --format json` | `python3 -c 'import csv,json,sys; …'` |
+| `lstore --put/get/delete` | 無對應單一工具 |
+
+CLI 選項風格遵循 GNU long-option 慣例（`--option value`）。
+
+---
+
+## 小組分工
+
+| 成員 | 角色 | 負責內容 |
+|------|------|---------|
+| 楊杰倫 | 系統整合與測試 | 共用函式庫、Makefile、測試腳本、benchmark、GitHub 文件 |
+| 羅章弘 | 解析專家 | `lparser`、POSIX regex、多格式輸出 |
+| 吳佳泰 | 串流邏輯官 | `lfilter`、串流過濾、欄位轉換 |
+| 潘彥霖 | 儲存架構師 | `lstore`、TTL、buffered write、key-value 索引 |
+
+---
+
+## 常見問題
+
+### `lparser` 在 Windows 上不能使用
+
+原因：Windows + MinGW 缺少 POSIX `regex.h`。  
+解法：在 Linux / Docker 執行完整管線：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\run_linux_demo.ps1
 ```
 
-這個腳本會在 Linux container 內：
-
-- 編譯 `lparser`
-- 編譯 `lfilter`
-- 編譯 `lstore`
-- 解析 `samples/access.log`
-- 過濾 `status >= 400`
-- 將結果寫入 `data/linux/errors.tsv`
-
-### 4. 手動測試 `lfilter`
-
-最穩定的 Windows 測試方式，是先建立一份 CSV 檔，再把檔案內容送進 `lfilter`。
-
-先建立測試檔：
-
-```powershell
-Set-Content data\sample.csv "ip,time,method,path,status" -Encoding ascii
-Add-Content data\sample.csv "192.168.0.2,30/Apr/2026:08:00:00 +0800,GET,/index.html,200" -Encoding ascii
-Add-Content data\sample.csv "192.168.0.3,30/Apr/2026:08:00:02 +0800,GET,/admin,404" -Encoding ascii
-Add-Content data\sample.csv "192.168.0.4,30/Apr/2026:08:00:03 +0800,POST,/login,500" -Encoding ascii
-```
-
-確認檔案內容：
-
-```powershell
-Get-Content data\sample.csv
-```
-
-再執行 `lfilter`：
-
-```powershell
-Get-Content data\sample.csv | build\lfilter.exe --where "status>=400" --select "ip,path,status"
-```
-
-預期輸出：
-
-```text
-ip,path,status
-192.168.0.3,/admin,404
-192.168.0.4,/login,500
-```
-
-也可以使用 here-string 方式直接送入：
-
-```powershell
-@'
-ip,time,method,path,status
-192.168.0.2,30/Apr/2026:08:00:00 +0800,GET,/index.html,200
-192.168.0.3,30/Apr/2026:08:00:02 +0800,GET,/admin,404
-192.168.0.4,30/Apr/2026:08:00:03 +0800,POST,/login,500
-'@ | build\lfilter.exe --where "status>=400" --select "ip,path,status"
-```
-
-### 5. 手動測試 `lstore`
-
-`lstore --get` 不會自己產生資料。  
-若要查詢某個 key，必須先透過 `--put` 把資料寫進資料檔。
-
-最穩定的 Windows 測試方式如下：
-
-先建立測試檔：
-
-```powershell
-Set-Content data\sample.csv "ip,time,method,path,status" -Encoding ascii
-Add-Content data\sample.csv "192.168.0.3,30/Apr/2026:08:00:02 +0800,GET,/admin,404" -Encoding ascii
-Add-Content data\sample.csv "192.168.0.4,30/Apr/2026:08:00:03 +0800,POST,/login,500" -Encoding ascii
-```
-
-寫入資料庫：
-
-```powershell
-Get-Content data\sample.csv | build\lstore.exe --db data\errors.tsv --put --key-field ip --ttl 3600
-```
-
-查詢資料：
-
-```powershell
-build\lstore.exe --db data\errors.tsv --get 192.168.0.4
-```
-
-預期輸出：
-
-```text
-192.168.0.4,30/Apr/2026:08:00:03 +0800,POST,/login,500
-```
-
-若要重新測試，建議先刪除舊資料檔：
-
-```powershell
-if (Test-Path data\errors.tsv) { Remove-Item data\errors.tsv -Force }
-```
-
-也可以使用 here-string 方式直接寫入：
-
-```powershell
-@'
-ip,time,method,path,status
-192.168.0.3,30/Apr/2026:08:00:02 +0800,GET,/admin,404
-192.168.0.4,30/Apr/2026:08:00:03 +0800,POST,/login,500
-'@ | build\lstore.exe --db data\errors.tsv --put --key-field ip --ttl 3600
-```
-
-查詢：
-
-```powershell
-build\lstore.exe --db data\errors.tsv --get 192.168.0.4
-```
-
-列出全部：
-
-```powershell
-build\lstore.exe --db data\errors.tsv --list
-```
-
-清理過期資料：
-
-```powershell
-build\lstore.exe --db data\errors.tsv --cleanup
-```
-
-## 平台說明
-
-專案目標執行平台是 Linux。  
-目前這台 Windows + MinGW 開發環境沒有提供 POSIX `regex.h`，因此：
-
-- `lparser` 在本機僅能編譯為提示用版本
-- `lfilter` 與 `lstore` 可正常開發與驗證
-- 真正的 regex 解析功能需在 Linux 環境測試
-
-## 常見錯誤排除
-
-### 1. `lfilter` 只有印出 header，沒有資料列
+### `lstore --get` 沒有輸出
 
 可能原因：
+- 尚未用 `--put` 寫入資料
+- 查詢的 key 不存在或已過期
 
-- 輸入檔內容格式不正確
-- PowerShell here-string 貼上時斷掉
-- 輸入檔編碼造成內容異常
+解法：先用 `--list` 確認有效資料，再查詢。
 
-建議解法：
+### benchmark 需要 python3
 
-- 改用 `Set-Content` / `Add-Content` 先建立 `data\sample.csv`
-- 建檔時加上 `-Encoding ascii`
-- 先用 `Get-Content data\sample.csv` 確認內容
+benchmark 腳本使用 python3 產生大量測試資料。若環境沒有 python3，可手動準備測試資料後單獨執行工具計時。
 
-### 2. `lstore --get` 沒有輸出
-
-可能原因：
-
-- 你還沒有先用 `--put` 寫入資料
-- 查詢的 key 不存在
-- 資料已過期
-- 查的是錯的資料檔
-
-建議解法：
-
-- 先確認有執行過 `--put`
-- 用 `build\lstore.exe --db data\errors.tsv --list` 查看目前資料
-- 若要重測，先刪除舊的 `data\errors.tsv`
-
-### 3. Windows 上 `lparser` 不能正常解析
-
-原因：
-
-- Windows + MinGW 環境沒有 POSIX `regex.h`
-
-解法：
-
-- 改用 Linux / Docker 執行：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\run_linux_demo.ps1
-```
-
-## 開發里程碑
-
-1. 穩定 standalone CLI 工具行為
-2. 補 sample fixture 與回歸測試
-3. 強化 CSV / JSONL 支援
-4. 為 `lstore` 加入壓縮與 buffered write
-5. 整合進 BusyBox applet
+---
 
 ## 專題背景
 
 本專案對應 UNIX 系統程式設計期末專題：
 
-- 主題：BusyBox 工具擴充
+- 主題：BusyBox 工具擴充（選項 B）
 - 方向：嵌入式資料管線工具（Embedded Data Pipeline）
+- 技術：C、POSIX API、pipe、fork/exec、file I/O、regex
+- 平台：Linux / BusyBox 嵌入式環境
 
-BusyPipe 的設計核心，是將日誌解析、串流過濾與資料保存拆分為三個可組合的命令列工具，並以標準輸入輸出作為模組邊界，建立可展示、可擴充、可測試的系統程式設計作品。
+BusyPipe 的設計核心，是將日誌解析、串流過濾與資料保存拆分為三個可組合的命令列工具，以標準輸入輸出作為模組邊界，實現 UNIX Philosophy：**Write programs that do one thing and do it well. Write programs to work together.**
