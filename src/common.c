@@ -66,6 +66,7 @@ int find_field_index(const string_list_t *header, const char *name) {
 
 bool is_number_string(const char *text) {
     bool has_digit = false;
+    bool has_dot   = false;   /* only one decimal point allowed */
     const unsigned char *cursor = (const unsigned char *)text;
 
     if (*cursor == '-' || *cursor == '+') {
@@ -74,6 +75,8 @@ bool is_number_string(const char *text) {
 
     while (*cursor != '\0') {
         if (*cursor == '.') {
+            if (has_dot) return false;   /* second dot → not a number */
+            has_dot = true;
             cursor++;
             continue;
         }

@@ -1,20 +1,23 @@
-CC ?= gcc
-CFLAGS ?= -Wall -Wextra -Werror -std=c11 -O2
-CPPFLAGS ?= -Iinclude
+CC      ?= gcc
+CFLAGS  ?= -Wall -Wextra -Werror -std=c11 -O2
+CPPFLAGS?= -Iinclude
 LDFLAGS ?=
 
 BUILD_DIR := build
-SRC_DIR := src
+SRC_DIR   := src
+MAN_DIR   := docs/man
+DATA_DIR  := data
 
 COMMON_OBJ := $(BUILD_DIR)/common.o
 
-.PHONY: all clean dirs
+TARGETS := $(BUILD_DIR)/lparser $(BUILD_DIR)/lfilter $(BUILD_DIR)/lstore
 
-all: dirs $(BUILD_DIR)/lparser $(BUILD_DIR)/lfilter $(BUILD_DIR)/lstore
+.PHONY: all clean dirs install bench test help
+
+all: dirs $(TARGETS)
 
 dirs:
-	if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
-	if not exist data mkdir data
+	@mkdir -p $(BUILD_DIR) $(DATA_DIR)
 
 $(BUILD_DIR)/common.o: $(SRC_DIR)/common.c include/common.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
@@ -28,5 +31,72 @@ $(BUILD_DIR)/lfilter: $(SRC_DIR)/lfilter.c $(COMMON_OBJ) include/common.h
 $(BUILD_DIR)/lstore: $(SRC_DIR)/lstore.c $(COMMON_OBJ) include/common.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(COMMON_OBJ) $(LDFLAGS) -o $@
 
+# ── install (to /usr/local/bin by default) ──────────────────────────────────
+PREFIX ?= /usr/local
+install: all
+	install -m 755 $(BUILD_DIR)/lparser  $(PREFIX)/bin/lparser
+	install -m 755 $(BUILD_DIR)/lfilter  $(PREFIX)/bin/lfilter
+	install -m 755 $(BUILD_DIR)/lstore   $(PREFIX)/bin/lstore
+	@echo "Installed to $(PREFIX)/bin"
+
+# ── man pages ───────────────────────────────────────────────────────────────
+install-man:
+	@mkdir -p $(PREFIX)/share/man/man1
+	install -m 644 $(MAN_DIR)/lparser.1 $(PREFIX)/share/man/man1/lparser.1
+	install -m 644 $(MAN_DIR)/lfilter.1 $(PREFIX)/share/man/man1/lfilter.1
+	install -m 644 $(MAN_DIR)/lstore.1  $(PREFIX)/share/man/man1/lstore.1
+	@echo "Man pages installed to $(PREFIX)/share/man/man1"
+
+# ── functional smoke-tests ──────────────────────────────────────────────────
+test: all
+	@echo "=== lparser: access.log (CSV) ==="
+	@./$(BUILD_DIR)/lparser \
+	  --regex '^([^ ]+) .* \[([^]]+)\] "([^ ]+) ([^ ]+) [^"]*" ([0-9]{3}) .*' \
+	  --fields ip,time,method,path,status --csv < samples/access.log
+	@echo "=== lparser: access.log (JSON) ==="
+	@./$(BUILD_DIR)/lparser \
+	  --regex '^([^ ]+) .* \[([^]]+)\] "([^ ]+) ([^ ]+) [^"]*" ([0-9]{3}) .*' \
+	  --fields ip,time,method,path,status --json < samples/access.log
+	@echo "=== lparser: auth.log (CSV) ==="
+	@./$(BUILD_DIR)/lparser \
+	  --format auth --csv < samples/auth.log
+	@echo "=== lfilter: status>=400 ==="
+	@./$(BUILD_DIR)/lparser \
+	  --regex '^([^ ]+) .* \[([^]]+)\] "([^ ]+) ([^ ]+) [^"]*" ([0-9]{3}) .*' \
+	  --fields ip,time,method,path,status --csv < samples/access.log | \
+	  ./$(BUILD_DIR)/lfilter --where 'status>=400' --select 'ip,path,status'
+	@echo "=== lfilter: JSON output ==="
+	@./$(BUILD_DIR)/lparser \
+	  --regex '^([^ ]+) .* \[([^]]+)\] "([^ ]+) ([^ ]+) [^"]*" ([0-9]{3}) .*' \
+	  --fields ip,time,method,path,status --csv < samples/access.log | \
+	  ./$(BUILD_DIR)/lfilter --where 'status>=400' --format json
+	@echo "=== lstore: put/get/list/cleanup ==="
+	@rm -f $(DATA_DIR)/test.tsv
+	@./$(BUILD_DIR)/lparser \
+	  --regex '^([^ ]+) .* \[([^]]+)\] "([^ ]+) ([^ ]+) [^"]*" ([0-9]{3}) .*' \
+	  --fields ip,time,method,path,status --csv < samples/access.log | \
+	  ./$(BUILD_DIR)/lfilter --where 'status>=400' | \
+	  ./$(BUILD_DIR)/lstore --db $(DATA_DIR)/test.tsv --put --key-field ip --ttl 3600
+	@./$(BUILD_DIR)/lstore --db $(DATA_DIR)/test.tsv --list
+	@./$(BUILD_DIR)/lstore --db $(DATA_DIR)/test.tsv --get 192.168.0.4
+	@./$(BUILD_DIR)/lstore --db $(DATA_DIR)/test.tsv --cleanup --stats
+	@rm -f $(DATA_DIR)/test.tsv
+	@echo "=== All tests passed ==="
+
+# ── benchmark ───────────────────────────────────────────────────────────────
+bench: all
+	@bash scripts/benchmark.sh
+
+# ── clean ───────────────────────────────────────────────────────────────────
 clean:
-	if exist $(BUILD_DIR) rmdir /s /q $(BUILD_DIR)
+	rm -rf $(BUILD_DIR)
+	rm -f $(DATA_DIR)/*.tsv $(DATA_DIR)/*.csv
+
+help:
+	@echo "BusyPipe Makefile targets:"
+	@echo "  all         build all tools (default)"
+	@echo "  test        run smoke tests"
+	@echo "  bench       run benchmark vs GNU tools"
+	@echo "  install     install to PREFIX (default /usr/local)"
+	@echo "  install-man install man pages"
+	@echo "  clean       remove build artifacts"

@@ -1,0 +1,83 @@
+.TH LFILTER 1 "2026-05" "BusyPipe 1.0" "BusyPipe Manual"
+.SH NAME
+lfilter \- CSV stream filter and field projector for BusyPipe
+.SH SYNOPSIS
+.B lfilter
+[\fB\-\-where\fR \fIexpr\fR]
+[\fB\-\-contains\fR \fIfield=substring\fR]
+[\fB\-\-select\fR \fIf1,f2,...\fR]
+[\fB\-\-format\fR \fBcsv\fR|\fBjson\fR]
+.SH DESCRIPTION
+.B lfilter
+reads a CSV stream from standard input (first line treated as header),
+applies optional filter conditions and field projection, and writes the
+filtered result to standard output.
+
+It is the second stage of the BusyPipe ETL pipeline:
+
+.nf
+  lparser | lfilter | lstore
+.fi
+
+Multiple filters (e.g.\& \fB\-\-where\fR and \fB\-\-contains\fR) are combined with
+logical AND.
+.SH OPTIONS
+.TP
+.BR \-\-where " " \fI"field<op>value"\fR
+Numeric or lexicographic comparison filter.
+Supported operators: \fB==  !=  >  >=  <  <=\fR.
+If both sides look like numbers, numeric comparison is used;
+otherwise lexicographic.
+.TP
+.BR \-\-contains " " \fI"field=substring"\fR
+Keep only rows where the specified field contains the given substring.
+.TP
+.BR \-\-select " " \fI"f1,f2,..."\fR
+Output only the listed fields (column projection).
+.TP
+.BR \-\-format " " \fBcsv\fR|\fBjson\fR
+Output format.
+\fBcsv\fR (default) writes CSV with a header row.
+\fBjson\fR writes JSONL — one JSON object per row.
+.TP
+.BR \-\-help
+Display usage information and exit.
+.SH EXIT STATUS
+.TP
+.B 0
+Success (zero or more rows matched).
+.TP
+.B 1
+Usage error, unknown field name, or invalid expression.
+.SH EXAMPLES
+.SS Filter by numeric status code
+.nf
+  lfilter \-\-where 'status>=400'
+.fi
+.SS Project selected fields
+.nf
+  lfilter \-\-where 'status>=400' \-\-select 'ip,path,status'
+.fi
+.SS Substring filter with JSON output
+.nf
+  lfilter \-\-contains 'user=admin' \-\-format json
+.fi
+.SS Full pipeline
+.nf
+  lparser \-\-format nginx \-\-csv < access.log \\
+    | lfilter \-\-where 'status>=400' \-\-select 'ip,path,status' \\
+    | lstore  \-\-db errors.tsv \-\-put \-\-key\-field ip \-\-ttl 3600
+.fi
+.SH COMPATIBILITY
+Implements a subset of \fBawk\fR(1) filtering and \fBcut\fR(1) field selection.
+The comparison semantics follow GNU \fBawk\fR numeric-string rules.
+.SH BUGS
+Only one \fB\-\-where\fR expression is supported per invocation.
+Quoted CSV fields (containing commas) are not yet handled.
+.SH SEE ALSO
+.BR lparser (1),
+.BR lstore (1),
+.BR cut (1),
+.BR awk (1)
+.SH AUTHORS
+BusyPipe Team — UNIX Systems Programming Final Project.

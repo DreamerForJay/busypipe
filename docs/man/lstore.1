@@ -1,0 +1,126 @@
+.TH LSTORE 1 "2026-05" "BusyPipe 1.0" "BusyPipe Manual"
+.SH NAME
+lstore \- file-based key-value store for BusyPipe
+.SH SYNOPSIS
+.nf
+.B lstore \-\-db \fIPATH\fR \-\-put \-\-key\-field \fIFIELD\fR [\-\-ttl \fISEC\fR] [\-\-stats]
+.B lstore \-\-db \fIPATH\fR \-\-get    \fIKEY\fR
+.B lstore \-\-db \fIPATH\fR \-\-delete \fIKEY\fR
+.B lstore \-\-db \fIPATH\fR \-\-list
+.B lstore \-\-db \fIPATH\fR \-\-cleanup [\-\-stats]
+.B lstore \-\-db \fIPATH\fR \-\-count
+.fi
+.SH DESCRIPTION
+.B lstore
+provides persistent, TTL-aware, file-backed key-value storage for the
+BusyPipe pipeline.  The database is a plain-text TSV file — readable with
+any standard tool — making it suitable for embedded and container environments.
+
+It is the third stage of the BusyPipe ETL pipeline:
+
+.nf
+  lparser | lfilter | lstore
+.fi
+
+.SS Storage format
+Each line of the database file has the form:
+
+.nf
+  key<TAB>expires_at_epoch<TAB>raw_csv_row
+.fi
+
+An \fIexpires_at_epoch\fR of \fB0\fR means the record never expires.
+.SH OPTIONS
+.TP
+.BR \-\-db " " \fIPATH\fR
+Path to the database file (created automatically on first write).
+Required for all modes.
+.TP
+.BR \-\-put
+Read CSV rows from stdin and append them to the database.
+Requires \fI\-\-key\-field\fR.
+.TP
+.BR \-\-key\-field " " \fIFIELD\fR
+Name of the CSV column whose value becomes the record key.
+.TP
+.BR \-\-ttl " " \fISEC\fR
+Time-to-live in seconds.  Omit or set to \fB0\fR for no expiry.
+.TP
+.BR \-\-get " " \fIKEY\fR
+Print the most-recently written, non-expired record for \fIKEY\fR.
+.TP
+.BR \-\-delete " " \fIKEY\fR
+Remove all records with the given key (rewrites the database file).
+.TP
+.BR \-\-list
+Print all non-expired records: one \fIkey<TAB>value\fR per line.
+.TP
+.BR \-\-cleanup
+Rewrite the database file, discarding all expired records.
+.TP
+.BR \-\-count
+Print the number of non-expired records.
+.TP
+.BR \-\-stats
+Print operation statistics to stderr (written, skipped, removed, etc.).
+.TP
+.BR \-\-help
+Display usage information and exit.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Usage error, missing key-field, or I/O failure.
+.SH EXAMPLES
+.SS Write error log entries with 1-hour TTL
+.nf
+  lparser \-\-format nginx \-\-csv < access.log \\
+    | lfilter \-\-where 'status>=400' \\
+    | lstore  \-\-db errors.tsv \-\-put \-\-key\-field ip \-\-ttl 3600
+.fi
+.SS Query a specific key
+.nf
+  lstore \-\-db errors.tsv \-\-get 192.168.0.4
+.fi
+.SS List all valid entries
+.nf
+  lstore \-\-db errors.tsv \-\-list
+.fi
+.SS Clean up expired entries and show stats
+.nf
+  lstore \-\-db errors.tsv \-\-cleanup \-\-stats
+.fi
+.SS Count remaining entries
+.nf
+  lstore \-\-db errors.tsv \-\-count
+.fi
+.SH IMPLEMENTATION NOTES
+.B Write buffering:
+\fB\-\-put\fR buffers output and flushes every 64 lines or 128 KiB to reduce
+syscall overhead in high-throughput pipelines.
+.PP
+.B Atomic rewrite:
+\fB\-\-cleanup\fR and \fB\-\-delete\fR write to a temporary file and rename it over the
+original, preventing data loss on crash.
+.PP
+.B Append semantics:
+Multiple records with the same key may exist; \fB\-\-get\fR returns the last
+(most-recently written) valid record.
+.SH COMPATIBILITY
+The TSV storage format can be processed by standard GNU tools:
+.nf
+  awk -F'\\t' '{print $1}' errors.tsv   # list all keys
+  cut -f3 errors.tsv                   # raw CSV values
+.fi
+.SH BUGS
+Concurrent writers are not safe (no file locking).
+Records are not deduplicated on write; use \fB\-\-cleanup\fR periodically.
+.SH SEE ALSO
+.BR lparser (1),
+.BR lfilter (1),
+.BR awk (1),
+.BR cut (1)
+.SH AUTHORS
+BusyPipe Team — UNIX Systems Programming Final Project.

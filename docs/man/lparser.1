@@ -1,0 +1,102 @@
+.TH LPARSER 1 "2026-05" "BusyPipe 1.0" "BusyPipe Manual"
+.SH NAME
+lparser \- structured log parser for BusyPipe
+.SH SYNOPSIS
+.B lparser
+[\fB\-\-regex\fR \fIPATTERN\fR \fB\-\-fields\fR \fIf1,f2,...\fR]
+[\fB\-\-format\fR \fINAME\fR]
+[\fB\-\-csv\fR|\fB\-\-json\fR]
+[\fB\-\-stats\fR]
+.SH DESCRIPTION
+.B lparser
+reads raw log lines from standard input, extracts named fields using POSIX
+extended regular expressions (capture groups), and writes structured
+\fBCSV\fR or \fBJSONL\fR output to standard output.
+
+It is the first stage of the BusyPipe ETL pipeline:
+
+.nf
+  lparser | lfilter | lstore
+.fi
+
+Lines that do not match the pattern are silently skipped.
+.SH OPTIONS
+.TP
+.BR \-\-regex " " \fIPATTERN\fR
+POSIX extended regular expression.  Each capture group corresponds to one
+output field.
+.TP
+.BR \-\-fields " " \fIf1,f2,...\fR
+Comma-separated list of field names.  The count must match the number of
+capture groups in \fI\-\-regex\fR.
+.TP
+.BR \-\-format " " \fINAME\fR
+Use a built-in format (see \fBBUILT-IN FORMATS\fR below).
+Implies both \fI\-\-regex\fR and \fI\-\-fields\fR.
+.TP
+.BR \-\-csv
+Write output as CSV.  The first line is the header. (default)
+.TP
+.BR \-\-json
+Write output as JSONL: one JSON object per matched line.
+.TP
+.BR \-\-stats
+Print \fImatched=N skipped=N total=N\fR to stderr after processing.
+.TP
+.BR \-\-help
+Display usage information and exit.
+.SH BUILT-IN FORMATS
+.TP
+.B nginx
+Nginx / Apache Combined Access Log.
+Fields: \fBip,time,method,path,status,bytes\fR
+.TP
+.B apache
+Apache Common Log Format.
+Fields: \fBip,time,method,path,status,bytes\fR
+.TP
+.B auth
+SSH \fIauth.log\fR (\fIsshd\fR Failed/Accepted password events).
+Fields: \fBtime,host,result,user,src_ip,port\fR
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Usage error, invalid regex, or other runtime error.
+.SH EXAMPLES
+.SS Parse Nginx access log (CSV)
+.nf
+  lparser \-\-format nginx \-\-csv < /var/log/nginx/access.log
+.fi
+.SS Parse auth.log (JSONL)
+.nf
+  lparser \-\-format auth \-\-json < /var/log/auth.log
+.fi
+.SS Custom regex
+.nf
+  lparser \-\-regex '^([0-9.]+) .* "([A-Z]+) ([^ ]+)' \\
+          \-\-fields ip,method,path \-\-csv < access.log
+.fi
+.SS Full pipeline
+.nf
+  lparser \-\-format nginx \-\-csv < access.log \\
+    | lfilter \-\-where 'status>=400' \-\-select 'ip,path,status' \\
+    | lstore  \-\-db errors.tsv \-\-put \-\-key\-field ip \-\-ttl 3600
+.fi
+.SH COMPATIBILITY
+Implements a subset of \fBawk\fR(1) / \fBgrep\fR(1) functionality optimised for
+structured log parsing.  The CSV output is compatible with GNU \fBcut\fR(1) and
+standard CSV processors.
+.SH BUGS
+Quoted CSV fields are not yet supported.
+Lines longer than 4096 bytes are truncated.
+.SH SEE ALSO
+.BR lfilter (1),
+.BR lstore (1),
+.BR grep (1),
+.BR awk (1),
+.BR regex (7)
+.SH AUTHORS
+BusyPipe Team — UNIX Systems Programming Final Project.
