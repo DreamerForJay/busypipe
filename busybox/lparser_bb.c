@@ -137,9 +137,13 @@ int main(int argc, char **argv) {   /* standalone build */
             putchar('{');
             for (j = 0; j < fields.count; j++) {
                 size_t len = (size_t)(m[j+1].rm_eo - m[j+1].rm_so);
+                char val[BP_MAX_LINE_LEN];
+                if (len >= sizeof(val)) len = sizeof(val) - 1;
+                memcpy(val, line + m[j+1].rm_so, len);
+                val[len] = '\0';
                 if (j) putchar(',');
                 printf("\"%s\":\"", fields.items[j]);
-                fwrite(line + m[j+1].rm_so, 1, len, stdout);
+                bp_json_escape(val);   /* was: raw fwrite, no escaping */
                 putchar('"');
             }
             puts("}");

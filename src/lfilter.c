@@ -61,15 +61,15 @@ typedef struct {
 
 /* ── usage / help ─────────────────────────────────────────────────────────── */
 
-static void usage(void) {
-    fprintf(stderr,
+static void show_usage(FILE *out) {
+    fprintf(out,
         "用法：lfilter [選項]\n"
         "\n"
         "從 stdin 讀取 CSV 資料流，進行條件過濾與欄位投影，\n"
         "結果輸出到 stdout。\n"
         "\n"
         "過濾選項：\n"
-        "  --where  \"欄位<運算子>值\"   數值或字串比較過濾\n"
+        "  --where  \"欄位<運算子>值\"   數值或字串比較過濾（僅限一次）\n"
         "      支援運算子：==  !=  >  >=  <  <=\n"
         "      若兩側均為數字則用數值比較，否則用字典順序比較\n"
         "  --contains \"欄位=子字串\"    欄位值包含指定子字串\n"
@@ -87,13 +87,25 @@ static void usage(void) {
         "範例：\n"
         "  lfilter --where 'status>=400' --select 'ip,path,status'\n"
         "  lfilter --contains 'user=admin' --format json\n"
-        "  lfilter --where 'status!=200' --where 'method==POST'\n"
+        "  lfilter --where 'status>=400' | lfilter --where 'method==POST'\n"
+        "      （多條件請串接多個 lfilter）\n"
         "\n"
         "完整管線：\n"
         "  lparser --format nginx --csv < access.log \\\n"
         "    | lfilter --where 'status>=400' --select 'ip,path,status' \\\n"
         "    | lstore  --db errors.tsv --put --key-field ip --ttl 3600\n");
+}
+
+/* Called on argument errors — print to stderr, exit 1. */
+static void usage(void) {
+    show_usage(stderr);
     exit(1);
+}
+
+/* Called for --help — print to stdout, exit 0. */
+static void print_help(void) {
+    show_usage(stdout);
+    exit(0);
 }
 
 /* ── parse --where expression ─────────────────────────────────────────────── */
@@ -149,8 +161,12 @@ static void parse_args(int argc, char **argv, config_t *cfg) {
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            usage();
+            print_help();
         } else if (strcmp(argv[i], "--where") == 0 && i + 1 < argc) {
+            if (cfg->has_where) {
+                die_usage("--where 只能指定一次（目前不支援多條件）\n"
+                          "  若需同時過濾，可串接多個 lfilter");
+            }
             strncpy(cfg->where_buffer, argv[++i],
                     sizeof(cfg->where_buffer) - 1);
             cfg->has_where = true;

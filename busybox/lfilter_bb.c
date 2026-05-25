@@ -150,6 +150,7 @@ int main(int argc, char **argv) {
         bp_trim_newline(line);
         if (!line[0]) continue;
         strncpy(buf,line,sizeof(buf)-1);
+        buf[sizeof(buf)-1] = '\0';   /* explicit null-termination */
         if (!bp_split(buf,',',&row)||row.count!=header.count) continue;
 
         /* --where filter */
@@ -187,7 +188,11 @@ int main(int argc, char **argv) {
             for(j=0;j<n;j++){
                 int col=has_sel?sel_idx[j]:(int)j;
                 if(j) putchar(',');
-                printf("\"%s\":\"%s\"",header.items[col],row.items[col]);
+                putchar('"');
+                bp_json_escape(header.items[col]);
+                printf("\":\"");
+                bp_json_escape(row.items[col]);   /* was: raw %s, no escaping */
+                putchar('"');
             }
             puts("}");
         } else if (has_sel) {

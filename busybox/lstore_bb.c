@@ -34,6 +34,10 @@
 #include <time.h>
 #include "busypipe.h"
 
+/* Buffered-write tuneables — match main lstore.c */
+#define BB_WRITE_BUF_LINES  64
+#define BB_WRITE_BUF_BYTES  (128*1024)
+
 typedef enum {
     M_NONE,M_PUT,M_GET,M_DEL,M_LIST,M_CLEANUP,M_COUNT
 } mode_t;
@@ -71,7 +75,13 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i],"--count"))     mode=M_COUNT;
         else if (!strcmp(argv[i],"--key-field") && i+1<argc)
             strncpy(key_field,argv[++i],127);
-        else if (!strcmp(argv[i],"--ttl")      && i+1<argc) ttl=atol(argv[++i]);
+        else if (!strcmp(argv[i],"--ttl")      && i+1<argc) {
+            char *end; errno=0;
+            ttl=strtol(argv[++i],&end,10);
+            if(errno!=0||*end!='\0'||ttl<0){
+                fprintf(stderr,"lstore: --ttl 需為非負整數（秒）\n"); return 1;
+            }
+        }
         else if (!strcmp(argv[i],"--stats"))     stats=true;
         else if (!strcmp(argv[i],"--help")||!strcmp(argv[i],"-h")) {
             fprintf(stderr,
@@ -104,14 +114,26 @@ int main(int argc, char **argv) {
         if(!db_fp){fprintf(stderr,"lstore: cannot open '%s'\n",db);return 1;}
         char line[BP_MAX_LINE_LEN];
         unsigned long written=0;
+        unsigned long buf_lines=0;
+        size_t        buf_bytes=0;
         while (fgets(line,sizeof(line),stdin)) {
             char buf[BP_MAX_LINE_LEN]; bp_trim_newline(line);
             if(!line[0]) continue;
             strncpy(buf,line,sizeof(buf)-1);
+            buf[sizeof(buf)-1]='\0';   /* explicit null-termination */
             bp_list_t row; memset(&row,0,sizeof(row));
             if(!bp_split(buf,',',&row)||row.count!=hdr.count) continue;
-            fprintf(db_fp,"%s\t%ld\t%s\n",row.items[kidx],exp_at,line);
-            written++;
+            int n=fprintf(db_fp,"%s\t%ld\t%s\n",row.items[kidx],exp_at,line);
+            if(n>0){
+                written++;
+                buf_lines++;
+                buf_bytes+=(size_t)n;
+            }
+            /* buffered flush — reduce syscalls on high-throughput streams */
+            if(buf_lines>=BB_WRITE_BUF_LINES||buf_bytes>=BB_WRITE_BUF_BYTES){
+                fflush(db_fp);
+                buf_lines=0; buf_bytes=0;
+            }
         }
         fflush(db_fp); fclose(db_fp);
         if (stats) fprintf(stderr,"put: written=%lu\n",written);
@@ -142,6 +164,7 @@ int main(int argc, char **argv) {
     while (fgets(line,sizeof(line),in)) {
         char cp[BP_MAX_LINE_LEN];
         strncpy(cp,line,sizeof(cp)-1);
+        cp[sizeof(cp)-1]='\0';   /* explicit null-termination */
         char *k,*v; long exp;
         total++;
         if (!parse_record(cp,&k,&exp,&v)) continue;
@@ -163,11 +186,9 @@ int main(int argc, char **argv) {
     if (mode==M_COUNT) printf("%lu\n",kept);
     if (rewrite) {
         fclose(out);
-        if (remove(db)!=0&&errno!=ENOENT){
-            fprintf(stderr,"lstore: cannot remove old db\n"); return 1;
-        }
+        /* rename() atomically replaces the target — no pre-removal needed */
         if (rename(tmp_path,db)!=0) {
-            /* cross-device fallback */
+            /* cross-device fallback: copy then remove tmp */
             FILE *s=fopen(tmp_path,"rb"), *d=fopen(db,"wb");
             char buf[4096]; size_t n;
             if (s&&d) { while((n=fread(buf,1,4096,s))>0) fwrite(buf,1,n,d); }

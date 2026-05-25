@@ -24,8 +24,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-RED='\033[0;31m'; GRN='\033[0;32m'; YLW='\033[1;33d'; NC='\033[0m'
-YLW='\033[1;33m'
+RED='\033[0;31m'; GRN='\033[0;32m'; YLW='\033[1;33m'; NC='\033[0m'
 hdr() { echo -e "\n${YLW}▶  $*${NC}"; }
 TIMEFORMAT='%R'
 

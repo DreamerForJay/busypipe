@@ -58,8 +58,8 @@ typedef struct {
 
 /* ── usage / help ─────────────────────────────────────────────────────────── */
 
-static void usage(void) {
-    fprintf(stderr,
+static void show_usage(FILE *out) {
+    fprintf(out,
         "用法：lstore --db PATH <模式> [選項]\n"
         "\n"
         "將 CSV 串流資料寫入檔案式 key-value store，支援 TTL 與 CRUD 操作。\n"
@@ -99,7 +99,18 @@ static void usage(void) {
         "\n"
         "  # 清理過期資料\n"
         "  lstore --db errors.tsv --cleanup --stats\n");
+}
+
+/* Called on argument errors — print to stderr, exit 1. */
+static void usage(void) {
+    show_usage(stderr);
     exit(1);
+}
+
+/* Called for --help — print to stdout, exit 0. */
+static void print_help(void) {
+    show_usage(stdout);
+    exit(0);
 }
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
@@ -176,7 +187,7 @@ static void parse_args(int argc, char **argv, config_t *cfg) {
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            usage();
+            print_help();
         } else if (strcmp(argv[i], "--db") == 0 && i + 1 < argc) {
             cfg->db_path = argv[++i];
         } else if (strcmp(argv[i], "--put") == 0) {
@@ -196,7 +207,12 @@ static void parse_args(int argc, char **argv, config_t *cfg) {
         } else if (strcmp(argv[i], "--key-field") == 0 && i + 1 < argc) {
             strncpy(cfg->key_field, argv[++i], sizeof(cfg->key_field) - 1);
         } else if (strcmp(argv[i], "--ttl") == 0 && i + 1 < argc) {
-            cfg->ttl_seconds = atol(argv[++i]);
+            char *end;
+            errno = 0;
+            cfg->ttl_seconds = strtol(argv[++i], &end, 10);
+            if (errno != 0 || *end != '\0' || cfg->ttl_seconds < 0) {
+                die_usage("--ttl 需為非負整數（秒）");
+            }
         } else if (strcmp(argv[i], "--stats") == 0) {
             cfg->stats = true;
         } else {
@@ -375,8 +391,9 @@ static void scan_db(const config_t *cfg,
 
     if (rewrite) {
         fclose(out);
-        if (remove(cfg->db_path) != 0 && errno != ENOENT)
-            die_runtime("cannot remove old db file");
+        /* rename() atomically replaces the target on the same filesystem;
+         * no pre-removal needed — and pre-removal would create a window
+         * where both the old db and the tmp file are gone.               */
         atomic_replace(tmp_path, cfg->db_path);
     }
 

@@ -71,4 +71,16 @@ static void bp_print_csv(FILE *f, const bp_list_t *row) {
     fputc('\n', f);
 }
 
+/* JSON string escaping — handles ", \, and ASCII control characters. */
+static void bp_json_escape(const char *s) __attribute__((unused));
+static void bp_json_escape(const char *s) {
+    while (*s) {
+        unsigned char c = (unsigned char)*s;
+        if      (c == '"' || c == '\\') { putchar('\\'); putchar(c); }
+        else if (c < 0x20)              { printf("\\u%04x", (unsigned)c); }
+        else                            { putchar(c); }
+        s++;
+    }
+}
+
 #endif /* BUSYPIPE_H */

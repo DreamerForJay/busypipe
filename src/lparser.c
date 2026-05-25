@@ -71,8 +71,8 @@ typedef struct {
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 
-static void usage(void) {
-    fprintf(stderr,
+static void show_usage(FILE *out) {
+    fprintf(out,
         "用法：lparser [選項]\n"
         "\n"
         "解析原始日誌並輸出結構化欄位。\n"
@@ -102,11 +102,18 @@ static void usage(void) {
         "  lparser --format auth  --json < /var/log/auth.log\n"
         "  lparser --regex '([0-9.]+) .* \"([A-Z]+) ([^ ]+)' \\\n"
         "          --fields ip,method,path --csv < access.log\n");
+}
+
+/* Called on argument errors — print to stderr, exit 1. */
+static void usage(void) {
+    show_usage(stderr);
     exit(1);
 }
 
+/* Called for --help — print to stdout, exit 0. */
 static void print_help(void) {
-    usage();
+    show_usage(stdout);
+    exit(0);
 }
 
 #ifndef _WIN32
