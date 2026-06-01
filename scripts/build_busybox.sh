@@ -78,19 +78,21 @@ echo "  include/libpipe.h     ← libpipe.h"
 echo ""
 echo "=== 步驟 3：Patch BusyBox 建置設定檔 ==="
 
-# 3a. include/applets.h — 加入三個 APPLET() 宣告
-if ! grep -q "IF_LPARSER" include/applets.h; then
+# 3a. include/applets.h — 直接用 APPLET() 宣告（不用 IF_XXX 包裝）
+# IF_LPARSER() 需要 Kconfig 先定義 CONFIG_LPARSER，才能展開。
+# 直接用 APPLET() 完全繞過 Kconfig，確保 applet 一定被編進 binary。
+if ! grep -q "APPLET(lparser" include/applets.h; then
     cat >> include/applets.h << 'EOF'
-IF_LFILTER(APPLET(lfilter, BB_DIR_USR_BIN, BB_SUID_DROP))
-IF_LPARSER(APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP))
-IF_LSTORE( APPLET(lstore,  BB_DIR_USR_BIN, BB_SUID_DROP))
+APPLET(lfilter, BB_DIR_USR_BIN, BB_SUID_DROP)
+APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP)
+APPLET(lstore,  BB_DIR_USR_BIN, BB_SUID_DROP)
 EOF
-    echo "  [PATCH] include/applets.h — 加入 IF_LFILTER / IF_LPARSER / IF_LSTORE"
+    echo "  [PATCH] include/applets.h — 加入 APPLET(lfilter/lparser/lstore)"
 else
     echo "  [SKIP]  include/applets.h — 已存在，略過"
 fi
 
-# 3b. miscutils/Config.in — 加入三個 config block
+# 3b. miscutils/Config.in — 加入 config block（menuconfig 顯示用，不影響編譯）
 if ! grep -q "config LPARSER" miscutils/Config.in; then
     cat >> miscutils/Config.in << 'EOF'
 
@@ -116,22 +118,24 @@ config LSTORE
 	  lstore is a file-backed key-value store with TTL support.
 	  It provides put/get/delete/list/cleanup/count operations.
 EOF
-    echo "  [PATCH] miscutils/Config.in — 加入 LPARSER / LFILTER / LSTORE config"
+    echo "  [PATCH] miscutils/Config.in — 加入 LPARSER / LFILTER / LSTORE config（選用）"
 else
     echo "  [SKIP]  miscutils/Config.in — 已存在，略過"
 fi
 
-# 3c. miscutils/Kbuild — 加入目的檔規則與 -DBUSYBOX_BUILD
-if ! grep -q "CONFIG_LPARSER" miscutils/Kbuild; then
+# 3c. miscutils/Kbuild — 用 lib-y 無條件編譯（不依賴 CONFIG_LPARSER）
+# lib-$(CONFIG_LPARSER) 需要 Kconfig 認識符號才有效；
+# lib-y 直接加入 Kbuild，確保 lparser.o / lfilter.o / lstore.o 一定被編譯。
+if ! grep -q "lparser.o" miscutils/Kbuild; then
     cat >> miscutils/Kbuild << 'EOF'
-lib-$(CONFIG_LPARSER) += lparser.o
-CFLAGS_lparser.o     += -DBUSYBOX_BUILD
-lib-$(CONFIG_LFILTER) += lfilter.o
-CFLAGS_lfilter.o     += -DBUSYBOX_BUILD
-lib-$(CONFIG_LSTORE)  += lstore.o
-CFLAGS_lstore.o      += -DBUSYBOX_BUILD
+lib-y            += lparser.o
+CFLAGS_lparser.o += -DBUSYBOX_BUILD
+lib-y            += lfilter.o
+CFLAGS_lfilter.o += -DBUSYBOX_BUILD
+lib-y            += lstore.o
+CFLAGS_lstore.o  += -DBUSYBOX_BUILD
 EOF
-    echo "  [PATCH] miscutils/Kbuild — 加入 lparser / lfilter / lstore 規則"
+    echo "  [PATCH] miscutils/Kbuild — 加入 lparser / lfilter / lstore（lib-y）"
 else
     echo "  [SKIP]  miscutils/Kbuild — 已存在，略過"
 fi
@@ -148,15 +152,9 @@ fi
 echo ""
 echo "=== 步驟 4：設定 BusyBox 並編譯 ==="
 
-# KCONFIG_ALLCONFIG 是 Kconfig 的強制值覆寫機制：
-# 指定的選項在 allnoconfig 時被強制設為 y，其餘全部為 n。
-# 不能用「allnoconfig 後 append + make oldconfig」，因為 allnoconfig
-# 已先寫入 "# CONFIG_LPARSER is not set"，make oldconfig 會優先採用
-# 先出現的否定值，導致 applet 未被啟用。
-FORCED_CFG="$(mktemp)"
-printf 'CONFIG_LPARSER=y\nCONFIG_LFILTER=y\nCONFIG_LSTORE=y\n' > "$FORCED_CFG"
-KCONFIG_ALLCONFIG="$FORCED_CFG" make allnoconfig
-rm -f "$FORCED_CFG"
+# applet 編譯完全由 lib-y 與直接 APPLET() 宣告控制，不依賴 Kconfig。
+# allnoconfig 只用來產生乾淨的基底設定，不需要 oldconfig 或 sed。
+make allnoconfig
 
 echo ""
 echo "開始編譯（make -j$(nproc)）..."

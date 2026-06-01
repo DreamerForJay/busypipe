@@ -118,13 +118,18 @@ BusyBox 使用特殊的 `//usage:` 註解格式撰寫說明字串（已在 `*_bb
 
 ### 4.1 `include/applets.h`
 
-依字母順序加入三行 `APPLET()` 宣告：
+直接加入 `APPLET()` 宣告（不使用 `IF_XXX()` 包裝）：
 
 ```c
-IF_LFILTER(APPLET(lfilter, BB_DIR_USR_BIN, BB_SUID_DROP))
-IF_LPARSER(APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP))
-IF_LSTORE( APPLET(lstore,  BB_DIR_USR_BIN, BB_SUID_DROP))
+APPLET(lfilter, BB_DIR_USR_BIN, BB_SUID_DROP)
+APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP)
+APPLET(lstore,  BB_DIR_USR_BIN, BB_SUID_DROP)
 ```
+
+> **為何不用 `IF_LPARSER()`？**
+> `IF_LPARSER(x)` 需要 Kconfig 先從 `Config.in` 讀取 `LPARSER` 符號才能展開。
+> BusyBox 1.36.x 的 Kconfig 解析 `Config.in` append 時可能靜默失敗，
+> 導致符號未被識別。直接使用 `APPLET()` 完全繞過 Kconfig，確保 applet 一定編入 binary。
 
 ### 4.2 `miscutils/Config.in`
 
@@ -156,16 +161,21 @@ config LSTORE
 
 ### 4.3 `miscutils/Kbuild`
 
-加入三行目的檔規則，並設定 `-DBUSYBOX_BUILD` 停用獨立執行包裝：
+使用 `lib-y`（無條件編譯）取代 `lib-$(CONFIG_XXX)`，
+並設定 `-DBUSYBOX_BUILD` 停用獨立執行包裝：
 
 ```make
-lib-$(CONFIG_LPARSER) += lparser.o
-CFLAGS_lparser.o     += -DBUSYBOX_BUILD
-lib-$(CONFIG_LFILTER) += lfilter.o
-CFLAGS_lfilter.o     += -DBUSYBOX_BUILD
-lib-$(CONFIG_LSTORE)  += lstore.o
-CFLAGS_lstore.o      += -DBUSYBOX_BUILD
+lib-y            += lparser.o
+CFLAGS_lparser.o += -DBUSYBOX_BUILD
+lib-y            += lfilter.o
+CFLAGS_lfilter.o += -DBUSYBOX_BUILD
+lib-y            += lstore.o
+CFLAGS_lstore.o  += -DBUSYBOX_BUILD
 ```
+
+> **為何用 `lib-y` 而非 `lib-$(CONFIG_LPARSER)`？**
+> `lib-$(CONFIG_LPARSER)` 只在 Kconfig 成功識別 `LPARSER` 符號後才有效，
+> 與 §4.1 的原因相同，直接使用 `lib-y` 確保無條件編譯。
 
 ### 4.4 `libbb/Kbuild`
 
