@@ -154,12 +154,9 @@ cp ../busypipe/busybox/libpipe.h    include/libpipe.h
 # 在 libbb/Kbuild 加入共用函式庫
 echo "lib-y += busypipe_lib.o" >> libbb/Kbuild
 
-# allnoconfig 避免 defconfig 啟用的 applet 與新版 kernel headers 的相容性問題
-make allnoconfig
-echo "CONFIG_LPARSER=y" >> .config
-echo "CONFIG_LFILTER=y" >> .config
-echo "CONFIG_LSTORE=y"  >> .config
-make oldconfig && make -j$(nproc)
+# KCONFIG_ALLCONFIG 強制啟用指定選項，搭配 allnoconfig 避免 kernel headers 相容性問題
+printf 'CONFIG_LPARSER=y\nCONFIG_LFILTER=y\nCONFIG_LSTORE=y\n' > /tmp/bp_forced.config
+KCONFIG_ALLCONFIG=/tmp/bp_forced.config make allnoconfig && make -j$(nproc)
 
 ./busybox lparser --format nginx --csv < access.log \
   | ./busybox lfilter --where 'status>=400' \

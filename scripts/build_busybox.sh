@@ -148,13 +148,15 @@ fi
 echo ""
 echo "=== 步驟 4：設定 BusyBox 並編譯 ==="
 
-# allnoconfig：所有 applet 預設停用，只啟用我們明確指定的項目。
-# 相較於 defconfig（啟用大量 applet），allnoconfig 完全避免
-# BusyBox 1.36.x 本身與新版 kernel headers（6.x）的相容性問題
-# （如 networking/tc.c 的 TCA_CBQ_MAX、modutils 的 MODULE_NAME_LEN 等）。
-make allnoconfig
-printf 'CONFIG_LPARSER=y\nCONFIG_LFILTER=y\nCONFIG_LSTORE=y\n' >> .config
-make oldconfig
+# KCONFIG_ALLCONFIG 是 Kconfig 的強制值覆寫機制：
+# 指定的選項在 allnoconfig 時被強制設為 y，其餘全部為 n。
+# 不能用「allnoconfig 後 append + make oldconfig」，因為 allnoconfig
+# 已先寫入 "# CONFIG_LPARSER is not set"，make oldconfig 會優先採用
+# 先出現的否定值，導致 applet 未被啟用。
+FORCED_CFG="$(mktemp)"
+printf 'CONFIG_LPARSER=y\nCONFIG_LFILTER=y\nCONFIG_LSTORE=y\n' > "$FORCED_CFG"
+KCONFIG_ALLCONFIG="$FORCED_CFG" make allnoconfig
+rm -f "$FORCED_CFG"
 
 echo ""
 echo "開始編譯（make -j$(nproc)）..."
@@ -171,30 +173,36 @@ echo "  build/busybox ← ${BB_DIR}/busybox"
 echo ""
 echo "=== 步驟 6：驗證 applet ==="
 
-echo "--- ./busybox lparser --help ---"
-./busybox lparser --help 2>&1 | head -5
+# 先確認三個 applet 都已編譯進 binary
+echo "--- ./busybox --list ---"
+./busybox --list
+
+for applet in lparser lfilter lstore; do
+    if ./busybox --list | grep -q "^${applet}$"; then
+        echo "[PASS] ${applet} 已編譯進 busybox binary"
+    else
+        echo "[FAIL] ${applet} 未出現在 busybox --list"
+        exit 1
+    fi
+done
 
 echo ""
-echo "--- ./busybox lfilter --help ---"
-./busybox lfilter --help 2>&1 | head -5
+echo "--- lparser --help（前 5 行）---"
+./busybox lparser --help 2>&1 | head -5 || true
 
 echo ""
-echo "--- ./busybox lstore --help ---"
-./busybox lstore  --help 2>&1 | head -5
+echo "--- lfilter --help（前 5 行）---"
+./busybox lfilter --help 2>&1 | head -5 || true
+
+echo ""
+echo "--- lstore --help（前 5 行）---"
+./busybox lstore  --help 2>&1 | head -5 || true
 
 echo ""
 echo "--- 完整管線測試 ---"
 rm -f /tmp/bp_test.tsv
 
-echo '192.168.0.2 - - [30/Apr/2026:08:00:00 +0800] "GET /index.html HTTP/1.1" 200 512' \
-     '
-192.168.0.3 - - [30/Apr/2026:08:00:01 +0800] "GET /admin HTTP/1.1" 404 128
-192.168.0.4 - - [30/Apr/2026:08:00:02 +0800] "POST /login HTTP/1.1" 500 64' | \
-    tr ' ' '\n' | grep -v '^$' | \
-    awk 'NR==1{line=$0} NR>1{line=line" "$0} NR%11==0{print line; line=""} END{if(line!="")print line}' \
-    > /tmp/bp_access.log 2>/dev/null || true
-
-# 直接用 echo 產生單行測試資料
+# 產生測試資料（兩筆 4xx/5xx 記錄）
 printf '%s\n' \
     '192.168.0.3 - - [30/Apr/2026:08:00:01 +0800] "GET /admin HTTP/1.1" 404 128' \
     '192.168.0.4 - - [30/Apr/2026:08:00:02 +0800] "POST /login HTTP/1.1" 500 64' \

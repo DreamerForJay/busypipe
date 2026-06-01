@@ -198,11 +198,11 @@ cp /path/to/busypipe/busybox/libpipe.h     include/libpipe.h
 # 修改 include/applets.h、miscutils/Config.in、
 # miscutils/Kbuild、libbb/Kbuild（見 §4）
 
-# 最小化設定：allnoconfig 預設停用所有 applet，避免 defconfig 啟用的
-# 大量 applet 與新版 kernel headers（6.x）產生相容性問題。
-make allnoconfig
-printf 'CONFIG_LPARSER=y\nCONFIG_LFILTER=y\nCONFIG_LSTORE=y\n' >> .config
-make oldconfig
+# KCONFIG_ALLCONFIG 強制啟用指定選項，其餘全設為 n。
+# 不可用「allnoconfig 後 append + make oldconfig」，因 allnoconfig 先寫入
+# "# CONFIG_XXX is not set"，make oldconfig 會優先採用否定值。
+printf 'CONFIG_LPARSER=y\nCONFIG_LFILTER=y\nCONFIG_LSTORE=y\n' > /tmp/bp_forced.config
+KCONFIG_ALLCONFIG=/tmp/bp_forced.config make allnoconfig
 
 # 編譯
 make -j"$(nproc)"

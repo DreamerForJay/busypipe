@@ -360,7 +360,7 @@ gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
 5. 在 `include/applets.h` 加入三個 `APPLET()` 宣告
 6. 在 `Config.in` 加入 Kconfig block
 7. 在 `miscutils/Kbuild` 加入 `lib-$(CONFIG_…)` 行
-8. `make allnoconfig`，加入 `CONFIG_LPARSER/LFILTER/LSTORE=y`，再 `make oldconfig && make -j$(nproc)`
+8. `KCONFIG_ALLCONFIG=<強制值檔案> make allnoconfig && make -j$(nproc)`
 
 ---
 
