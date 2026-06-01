@@ -141,13 +141,11 @@
 
 ## 5. 角色分工
 
-| 成員 | 角色 | 主要貢獻 |
-|------|------|---------|
-| 楊杰倫 | 系統整合與測試 | Makefile、共用函式庫、測試腳本、benchmark、BusyBox 整合、GitHub 文件 |
-| 羅章弘 | 解析專家 | `lparser`（POSIX regex、預設格式、CSV/JSONL 輸出） |
-| 吳佳泰 | 串流邏輯官 | `lfilter`（過濾、投影、JSON 輸出、錯誤處理） |
-| 潘彥霖 | 儲存架構師 | `lstore`（TTL、buffered write、atomic rewrite、索引） |
-
+| 成員 | 角色 | 主要負責內容 |
+|---|---|---|
+| 羅章弘 | 解析專家 | `lparser`（POSIX regex、預設格式、CSV/JSONL 輸出、--stats）、共用函式庫（common.c）、Makefile |
+| 吳佳泰 | 串流邏輯官 | `lfilter`（行過濾、欄位投影、JSON 輸出、錯誤處理）、測試腳本、Benchmark |
+| 潘彥霖 | 儲存架構師 | `lstore`（TTL 機制、Buffered write、Atomic rewrite、CRUD 操作）、BusyBox 整合指南、GitHub 文件 |
 ---
 
 ## 6. GitHub Issue 對應
