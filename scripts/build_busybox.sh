@@ -93,17 +93,18 @@ if ! grep -q "busypipe_lib" libbb/Kbuild; then
     echo "  [PATCH] libbb/Kbuild += busypipe_lib.o（gen 後補）"
 fi
 
-echo "--- 診斷：gen_build_files.sh 後的結果 ---"
-echo "[applets.h] IF_LPARSER 項目："
-grep -n "IF_LPARSER\|IF_LFILTER\|IF_LSTORE" include/applets.h 2>/dev/null \
-    || grep -n "LPARSER\|LFILTER\|LSTORE" include/applets.src.h 2>/dev/null \
-    || echo "  (未找到)"
-echo "[Config.in] LPARSER 項目："
+echo "--- 診斷 A：gen_build_files.sh 後的結果 ---"
+echo "[A1] applets.h IF_LXXX 項目（最後 20 行 + 搜尋）："
+tail -20 include/applets.h
+echo "---"
+grep -n "IF_LPARSER\|IF_LFILTER\|IF_LSTORE" include/applets.h \
+    || echo "  [A1-FAIL] IF_LXXX 未在 applets.h（directive 未被處理）"
+echo "[A2] Config.in LPARSER 項目："
 grep -n "LPARSER\|LFILTER\|LSTORE" miscutils/Config.in || echo "  (未找到)"
-echo "[Kbuild] LPARSER 項目："
+echo "[A3] Kbuild LPARSER 項目："
 grep -n "LPARSER\|LFILTER\|LSTORE" miscutils/Kbuild || echo "  (未找到)"
-echo "[Config.in] 行 595-610（診斷 Overlong line 位置）："
-sed -n '595,610p' miscutils/Config.in | cat -A
+echo "[A4] libbb/Kbuild busypipe_lib 項目："
+grep -n "busypipe_lib" libbb/Kbuild || echo "  [A4-FAIL] busypipe_lib 未在 libbb/Kbuild"
 
 # --- 4. 設定並編譯 ---
 echo ""
@@ -111,15 +112,20 @@ echo "=== 步驟 4：make defconfig ==="
 # make defconfig 尊重 Config.in 的 default y，CONFIG_LPARSER=y 自動設定
 make defconfig
 
-echo "--- .config 中 applet 狀態 ---"
+echo "--- 診斷 B：make defconfig 後 ---"
+echo "[B1] .config 中 applet 狀態："
 grep -E 'CONFIG_LPARSER|CONFIG_LFILTER|CONFIG_LSTORE|CONFIG_TC' .config \
-    || echo "  (LPARSER/LFILTER/LSTORE 未出現 — gen_build_files.sh 可能未正確處理)"
+    || echo "  [B1-FAIL] LPARSER/LFILTER/LSTORE 未出現"
 
 # 停用 networking/tc（BusyBox 1.36.x + kernel 6.x header TCA_CBQ_MAX 不相容）
 if grep -q "^CONFIG_TC=y" .config; then
     sed -i 's/^CONFIG_TC=y/CONFIG_TC=n/' .config
     echo "  [SED] CONFIG_TC=y → n（避免 kernel 6.x header 編譯錯誤）"
 fi
+
+echo "[B2] autoconf.h 中 CONFIG_LXXX（make defconfig 完成後）："
+grep -E 'CONFIG_LPARSER|CONFIG_LFILTER|CONFIG_LSTORE' include/autoconf.h 2>/dev/null \
+    || echo "  [B2-FAIL] CONFIG_LXXX 未在 autoconf.h（Kconfig 未正確寫入）"
 
 echo ""
 echo "=== 步驟 5：make -j$(nproc) ==="
