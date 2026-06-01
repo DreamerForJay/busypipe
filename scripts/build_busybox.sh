@@ -32,19 +32,29 @@ echo ""
 echo "=== 步驟 1：下載 BusyBox ${BB_VERSION} ==="
 cd "$ROOT"
 if [ ! -d "$BB_DIR" ]; then
+    # 下載前先驗證既有 tarball；若損壞則刪除重新下載
+    if [ -f "$BB_TARBALL" ]; then
+        echo "  驗證既有 tarball 完整性..."
+        if ! tar tf "$BB_TARBALL" >/dev/null 2>&1; then
+            echo "  tarball 不完整，刪除後重新下載..."
+            rm -f "$BB_TARBALL"
+        fi
+    fi
     [ -f "$BB_TARBALL" ] || wget -q --show-progress "$BB_URL"
-    echo "解壓縮 ${BB_TARBALL} ..."
-    tar xf "$BB_TARBALL"
+    echo "  解壓縮 ${BB_TARBALL} ..."
+    tar xjf "$BB_TARBALL"   # 明確指定 -j（bzip2），避免自動偵測失敗
     if [ ! -f "${BB_DIR}/include/applets.h" ]; then
-        echo "[ERROR] 解壓縮後找不到 ${BB_DIR}/include/applets.h，請確認 tarball 完整性。"
+        echo "[ERROR] 解壓縮後找不到 include/applets.h"
+        echo "  已解壓縮的檔案："
+        ls "${BB_DIR}/" 2>/dev/null || echo "  (目錄不存在)"
         exit 1
     fi
     echo "  解壓縮完成。"
 else
     echo "  已存在 ${BB_DIR}，跳過下載。"
     if [ ! -f "${BB_DIR}/include/applets.h" ]; then
-        echo "[ERROR] ${BB_DIR}/include/applets.h 不存在（可能是不完整的舊目錄）。"
-        echo "  請刪除後重新執行：rm -rf ${BB_DIR}"
+        echo "[ERROR] ${BB_DIR}/include/applets.h 不存在（不完整的舊目錄）。"
+        echo "  解決方法：rm -rf '${BB_DIR}' 後重新執行。"
         exit 1
     fi
 fi
