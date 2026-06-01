@@ -3,7 +3,7 @@
 # build_busybox.sh — BusyPipe x BusyBox 整合建置（directive-based 方案）
 #
 # 現代 BusyBox（1.36.x）以 scripts/gen_build_files.sh 掃描 .c 原始檔中的：
-#   //applet:  → 自動寫入 include/applets.h
+#   //applet:  → 自動寫入 include/applets.src.h
 #   //kbuild:  → 自動寫入 miscutils/Kbuild
 #   //config:  → 自動寫入 miscutils/Config.in
 # 只要 *_bb.c 包含這些 directive，gen_build_files.sh 就會產生正確的 patch。
@@ -43,8 +43,8 @@ if [ ! -d "$BB_DIR" ]; then
     [ -f "$BB_TARBALL" ] || wget -q --show-progress "$BB_URL"
     echo "  解壓縮 ${BB_TARBALL} ..."
     tar xjf "$BB_TARBALL"   # 明確指定 -j（bzip2），避免自動偵測失敗
-    if [ ! -f "${BB_DIR}/include/applets.h" ]; then
-        echo "[ERROR] 解壓縮後找不到 include/applets.h"
+    if [ ! -f "${BB_DIR}/include/applets.src.h" ]; then
+        echo "[ERROR] 解壓縮後找不到 include/applets.src.h"
         echo "  已解壓縮的檔案："
         ls "${BB_DIR}/" 2>/dev/null || echo "  (目錄不存在)"
         exit 1
@@ -52,8 +52,8 @@ if [ ! -d "$BB_DIR" ]; then
     echo "  解壓縮完成。"
 else
     echo "  已存在 ${BB_DIR}，跳過下載。"
-    if [ ! -f "${BB_DIR}/include/applets.h" ]; then
-        echo "[ERROR] ${BB_DIR}/include/applets.h 不存在（不完整的舊目錄）。"
+    if [ ! -f "${BB_DIR}/include/applets.src.h" ]; then
+        echo "[ERROR] ${BB_DIR}/include/applets.src.h 不存在（不完整的舊目錄）。"
         echo "  解決方法：rm -rf '${BB_DIR}' 後重新執行。"
         exit 1
     fi
@@ -85,7 +85,7 @@ bash scripts/gen_build_files.sh . .
 
 echo "--- 診斷：gen_build_files.sh 後的結果 ---"
 echo "[applets.h] LPARSER 項目："
-grep -n "LPARSER\|LFILTER\|LSTORE" include/applets.h || echo "  (未找到，directive 可能未被處理)"
+grep -n "LPARSER\|LFILTER\|LSTORE" include/applets.src.h || echo "  (未找到，directive 可能未被處理)"
 echo "[Config.in] LPARSER 項目："
 grep -n "LPARSER\|LFILTER\|LSTORE" miscutils/Config.in || echo "  (未找到)"
 echo "[Kbuild] LPARSER 項目："
