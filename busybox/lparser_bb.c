@@ -18,25 +18,19 @@
 //config:	  Log parser applet. Part of BusyPipe embedded ETL pipeline.
 //config:	  Parses raw log lines (nginx/apache/auth) into CSV or JSONL.
 
-/*
-//usage:#define lparser_trivial_usage \
-//usage:    "--regex PATTERN --fields f1,f2[,...] [--csv|--json] [--stats]\n" \
+//usage:#define lparser_trivial_usage "--regex PATTERN --fields f1,f2[,...] [--csv|--json] [--stats]"
 //usage:    "  or: --format nginx|apache|auth [--csv|--json] [--stats]"
-//usage:#define lparser_full_usage "\n\n" \
-//usage:    "Parse raw log lines into structured CSV or JSONL output.\n" \
-//usage:    "\n" \
-//usage:    "Options:\n" \
-//usage:    "  --regex PATTERN   POSIX extended regex (capture groups = fields)\n" \
-//usage:    "  --fields f1,...   Field names (count must match capture groups)\n" \
-//usage:    "  --format NAME     Built-in format: nginx, apache, auth\n" \
-//usage:    "  --csv             Output CSV with header (default)\n" \
-//usage:    "  --json            Output JSONL\n" \
-//usage:    "  --stats           Print matched/skipped stats to stderr\n" \
-//usage:    "\nBuilt-in formats:\n" \
-//usage:    "  nginx   Nginx/Apache Combined Access Log\n" \
-//usage:    "  apache  Apache Common Log Format\n" \
-//usage:    "  auth    SSH auth.log (sshd Failed/Accepted password)\n"
-*/
+//usage:#define lparser_full_usage "\n\n"
+//usage:    "Parse raw log lines into structured CSV or JSONL output.\n"
+//usage:    "\n"
+//usage:    "Options:\n"
+//usage:    "  --regex PATTERN   POSIX extended regex (capture groups = fields)\n"
+//usage:    "  --fields f1,...   Field names (count must match capture groups)\n"
+//usage:    "  --format NAME     Built-in format: nginx, apache, auth\n"
+//usage:    "  --csv             Output CSV with header (default)\n"
+//usage:    "  --json            Output JSONL\n"
+//usage:    "  --stats           Print matched/skipped stats to stderr\n"
+//usage:    "\nBuilt-in formats: nginx  apache  auth\n"
 
 /* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <stdlib.h>

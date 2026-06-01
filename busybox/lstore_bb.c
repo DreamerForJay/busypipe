@@ -17,27 +17,18 @@
 //config:	  File-backed key-value store applet. Part of BusyPipe embedded ETL pipeline.
 //config:	  Supports put/get/delete/list/cleanup/count with TTL.
 
-/*
-//usage:#define lstore_trivial_usage \
-//usage:    "--db PATH --put --key-field FIELD [--ttl SEC] [--stats] |\n" \
-//usage:    "           --get KEY | --delete KEY | --list | --cleanup | --count"
-//usage:#define lstore_full_usage "\n\n" \
-//usage:    "File-backed key-value store with TTL support.\n" \
-//usage:    "\n" \
-//usage:    "Storage format:  key<TAB>expires_epoch<TAB>raw_csv_row\n" \
-//usage:    "\n" \
-//usage:    "Options:\n" \
-//usage:    "  --db PATH         Database file path (TSV)\n" \
-//usage:    "  --put             Read CSV from stdin, append to db\n" \
-//usage:    "    --key-field F   CSV column used as key\n" \
-//usage:    "    --ttl SEC       Expiry in seconds (0 = never)\n" \
-//usage:    "  --get KEY         Print most-recent non-expired record\n" \
-//usage:    "  --delete KEY      Remove all records with KEY\n" \
-//usage:    "  --list            Print all valid records\n" \
-//usage:    "  --cleanup         Rewrite db, remove expired records\n" \
-//usage:    "  --count           Print number of valid records\n" \
-//usage:    "  --stats           Print operation stats to stderr\n"
-*/
+//usage:#define lstore_trivial_usage "--db PATH --put --key-field F [--ttl SEC] | --get KEY | --delete KEY | --list | --cleanup | --count"
+//usage:#define lstore_full_usage "\n\n"
+//usage:    "File-backed key-value store with TTL support.\n"
+//usage:    "Storage: key TAB expires_epoch TAB raw_csv_row\n"
+//usage:    "\n"
+//usage:    "  --db PATH         Database file (TSV)\n"
+//usage:    "  --put             Read CSV from stdin, append to db\n"
+//usage:    "    --key-field F   CSV column used as key\n"
+//usage:    "    --ttl SEC       Expiry in seconds (0 = never)\n"
+//usage:    "  --get KEY         Print most-recent non-expired record\n"
+//usage:    "  --delete KEY      Remove all records with KEY\n"
+//usage:    "  --list / --count / --cleanup / --stats\n"
 
 /* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <errno.h>

@@ -17,18 +17,15 @@
 //config:	  CSV stream filter applet. Part of BusyPipe embedded ETL pipeline.
 //config:	  Filters rows by condition, projects fields, outputs CSV or JSONL.
 
-/*
-//usage:#define lfilter_trivial_usage \
-//usage:    "[--where expr] [--select f1,f2,...] [--contains f=sub] [--format csv|json]"
-//usage:#define lfilter_full_usage "\n\n" \
-//usage:    "Filter and project a CSV stream.\n" \
-//usage:    "\n" \
-//usage:    "Options:\n" \
-//usage:    "  --where  \"field<op>value\"  Comparison filter (==!=><>=<=)\n" \
-//usage:    "  --contains \"field=substr\"  Substring filter\n" \
-//usage:    "  --select \"f1,f2,...\"        Field projection\n" \
-//usage:    "  --format csv|json           Output format (default csv)\n"
-*/
+//usage:#define lfilter_trivial_usage "[--where expr] [--select f1,f2,...] [--contains f=sub] [--format csv|json]"
+//usage:#define lfilter_full_usage "\n\n"
+//usage:    "Filter and project a CSV stream.\n"
+//usage:    "\n"
+//usage:    "Options:\n"
+//usage:    "  --where  FIELD<OP>VALUE  Comparison filter (==!=><>=<=)\n"
+//usage:    "  --contains FIELD=SUBSTR  Substring filter\n"
+//usage:    "  --select f1,f2,...       Field projection\n"
+//usage:    "  --format csv|json        Output format (default csv)\n"
 
 /* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <stdlib.h>

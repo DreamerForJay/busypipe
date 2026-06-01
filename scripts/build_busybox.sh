@@ -81,6 +81,13 @@ fi
 # --- 3. 執行 gen_build_files.sh ---
 echo ""
 echo "=== 步驟 3：執行 gen_build_files.sh（處理 //applet: //kbuild: //config:）==="
+
+# 轉換 Windows CRLF → Unix LF（檔案由 Windows 工具建立，CRLF 會導致
+# Kconfig "Overlong line" 錯誤與 usage.h 中的 stray '\' 問題）
+for f in miscutils/lparser.c miscutils/lfilter.c miscutils/lstore.c libbb/busypipe_lib.c; do
+    sed -i 's/\r//' "$f"
+done
+echo "  [CRLF] 已轉換 miscutils/*.c libbb/busypipe_lib.c 為 Unix LF"
 bash scripts/gen_build_files.sh . .
 
 echo "--- 診斷：gen_build_files.sh 後的結果 ---"
