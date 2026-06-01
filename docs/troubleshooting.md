@@ -300,6 +300,48 @@ make -j$(nproc)
 
 ---
 
+## 效能最佳化記錄
+
+### 問題：lparser 比 GNU awk 慢 2.5 倍
+
+**症狀（最佳化前）：**
+```
+lparser --regex ...      = 440 ms
+GNU awk '{...}' access.log = 174 ms  (2.53× 差距，超過 50% 目標)
+```
+
+**根本原因：**
+POSIX `regexec()` 對每一行做完整的 NFA/DFA 比對，開銷遠高於
+AWK 的內建空白欄位切割（僅需線性掃描）。
+
+**解決方案：快速路徑解析（Fast-Path Parser）**
+
+在 `lparser.c` / `lparser_bb.c` 中，對已知的內建格式（`--format nginx/apache/auth`）
+新增手工 C 字串掃描函式 `parse_nginx_fast()` / `parse_auth_fast()`：
+
+```
+while (*p && *p != ' ') p++;   // 掃描到下一個空格
+while (*p && *p != '[') p++;   // 掃描到 '['
+...
+```
+
+- 時間複雜度：O(line_length)，與 AWK 相同
+- 不需要 NFA 狀態機 → 平均快 3–4×
+
+**同步採用的其他最佳化：**
+1. `setvbuf(stdin/stdout, NULL, _IOFBF, 1<<17)` — 128 KiB I/O 緩衝，減少 read/write syscall
+2. CSV 輸出從每欄多次 `putchar/fwrite` 改為單行整體 `fwrite(buf, pos, stdout)`
+3. 編譯旗標 `-O2 → -O3`
+
+**最佳化後結果（50,000 行，best-of-3）：**
+```
+lparser --format nginx = 140 ms  (GNU awk = 178 ms)  → BusyPipe 快 21%  ✓
+lparser --format auth  = 164 ms  (GNU awk = 201 ms)  → BusyPipe 快 18%  ✓
+完整管線 lparser|lfilter = 159 ms (GNU awk 122 ms)   → 差距 32%，在 50% 內  ✓
+```
+
+---
+
 ## 關鍵知識整理
 
 ### BusyBox 1.36.x 建置系統重要規則

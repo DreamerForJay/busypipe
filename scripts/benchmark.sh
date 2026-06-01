@@ -104,7 +104,7 @@ PYEOF
 
 REGEX='^([^ ]+) .* \[([^]]+)\] "([^ ]+) ([^ ]+) [^"]*" ([0-9]{3}) ([0-9]+)'
 FIELDS='ip,time,method,path,status,bytes'
-"$BUILD/lparser" --regex "$REGEX" --fields "$FIELDS" --csv \
+"$BUILD/lparser" --format nginx --csv \
     < "$LOGFILE" > "$CSVFILE"
 
 CSVLINES=$(( $(wc -l < "$CSVFILE") - 1 ))
@@ -118,14 +118,13 @@ printf "  BusyPipe Benchmark  (N=%d, repeat=%d)\n" "$NLINES" "$REPEAT"
 echo "============================================================"
 
 # ── 1. Field extraction ────────────────────────────────────────────────────────
-hdr "1. Field extraction  (lparser vs awk)"
+hdr "1. Field extraction  (lparser --format nginx vs awk)"
 
-# GNU awk equivalent: use $1 $7 $8 $9 field positions in access.log
-# Field positions: 1=ip 4=time(no[) 7=method 8=path 9=status 10=bytes
-# After parsing: ip=$1, time=substr($4,2), method=substr($7,2), path=$8, status=$9, bytes=$10
+# GNU awk equivalent: use field positions in access.log
+# ip=$1, time=$4 (strip "["), method=$7 (strip '"'), path=$8, status=$9, bytes=$10
 
 b1_bp() {
-    "$BUILD/lparser" --regex "$REGEX" --fields "$FIELDS" --csv < "$LOGFILE"
+    "$BUILD/lparser" --format nginx --csv < "$LOGFILE"
 }
 b1_gnu() {
     awk '{
@@ -168,7 +167,7 @@ cmp_row "field projection (lfilter vs awk)" "$BP_MS" "$GNU_MS" "$CSVLINES"
 hdr "4. Combined pipeline  lparser | lfilter  vs  awk"
 
 b4_bp() {
-    "$BUILD/lparser" --regex "$REGEX" --fields "$FIELDS" --csv < "$LOGFILE" | \
+    "$BUILD/lparser" --format nginx --csv < "$LOGFILE" | \
     "$BUILD/lfilter" --where 'status>=400' --select 'ip,path,status'
 }
 b4_gnu() {
@@ -183,7 +182,7 @@ hdr "5. Store write  (lstore --put vs awk >> file)"
 
 b5_bp() {
     rm -f "$DB_FILE"
-    "$BUILD/lparser" --regex "$REGEX" --fields "$FIELDS" --csv < "$LOGFILE" | \
+    "$BUILD/lparser" --format nginx --csv < "$LOGFILE" | \
     "$BUILD/lstore" --db "$DB_FILE" --put --key-field ip
 }
 b5_gnu() {

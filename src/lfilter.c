@@ -312,6 +312,9 @@ int main(int argc, char **argv) {
 
     parse_args(argc, argv, &cfg);
 
+    setvbuf(stdin,  NULL, _IOFBF, 1 << 17);
+    setvbuf(stdout, NULL, _IOFBF, 1 << 17);
+
     /* read header */
     if (fgets(header_buf, sizeof(header_buf), stdin) == NULL) return 0;
     trim_newline(header_buf);

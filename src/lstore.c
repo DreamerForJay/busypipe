@@ -410,6 +410,8 @@ int main(int argc, char **argv) {
     config_t cfg;
     parse_args(argc, argv, &cfg);
 
+    setvbuf(stdin, NULL, _IOFBF, 1 << 17);
+
     switch (cfg.mode) {
         case MODE_PUT:
             put_rows(&cfg);

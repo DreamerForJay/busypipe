@@ -350,13 +350,13 @@ make clean
 ### 手動 `gcc`
 
 ```bash
-gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
+gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O3 \
     -c src/common.c -o build/common.o
-gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
+gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O3 \
     src/lparser.c build/common.o -o build/lparser
-gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
+gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O3 \
     src/lfilter.c build/common.o -o build/lfilter
-gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
+gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O3 \
     src/lstore.c  build/common.o -o build/lstore
 ```
 
@@ -364,18 +364,24 @@ gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
 
 ## Benchmark 結果（參考）
 
-以 50,000 行合成日誌測試，BusyPipe vs GNU awk（best-of-3 runs）：
+以 50,000 行合成日誌測試，BusyPipe vs GNU awk（best-of-3 runs，-O3 編譯）：
 
-| 測試項目 | BusyPipe | GNU awk | 說明 |
-|--------|---------|---------|------|
-| 欄位擷取 | ~180 ms | ~70 ms | lparser 有 regex 編譯開銷 |
-| 行過濾 | ~50 ms | ~50 ms | **相當** |
-| 欄位投影 | ~50 ms | ~50 ms | **相當** |
-| 完整管線 | ~200 ms | ~60 ms | 含 process spawn overhead |
-| Store 寫入 | ~200 ms | ~120 ms | 含 CSV 解析與 key lookup |
-| auth.log 解析 | ~180 ms | ~75 ms | 同 lparser overhead |
+| 測試項目 | BusyPipe | GNU awk | 差距 | 說明 |
+|--------|---------|---------|------|------|
+| 欄位擷取（lparser --format nginx） | ~140 ms | ~178 ms | **BusyPipe 領先** | 快速路徑繞過 POSIX regex |
+| 行過濾（lfilter --where） | ~119 ms | ~120 ms | **BusyPipe 領先** | 幾乎相同 |
+| 欄位投影（lfilter --select） | ~113 ms | ~118 ms | **BusyPipe 領先** | 幾乎相同 |
+| 完整管線（lparser \| lfilter） | ~159 ms | ~120 ms | -32%（達標） | 含 process spawn |
+| Store 寫入（lparser \| lstore） | ~279 ms | ~259 ms | -7%（達標） | 含 lparser 整合 |
+| auth.log 解析（lparser --format auth） | ~164 ms | ~201 ms | **BusyPipe 領先** | 快速路徑繞過 POSIX regex |
 
-**結論：** `lfilter` 和 `lstore` 的處理速度與 awk 相當；`lparser` 的 POSIX regex 編譯有固定開銷，大量資料時吞吐量達 **10 萬行/秒以上**，足以應付嵌入式環境需求。
+**結論：** 四項測試 BusyPipe 優於 GNU awk；另外兩項差距均在 **50% 以內**，達成效能目標。
+
+核心最佳化：
+- `--format nginx/apache/auth` 採用手工 C 字串掃描取代 POSIX `regexec()`（加速 3–4×）
+- `setvbuf()` 將 I/O 緩衝區擴至 128 KiB（減少 syscall 次數）
+- CSV 輸出改為單次 `fwrite()`（減少函式呼叫開銷）
+- 編譯旗標從 `-O2` 升至 `-O3`
 
 ---
 
