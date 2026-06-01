@@ -130,7 +130,7 @@
 | 下載 BusyBox 1.36.1 原始碼 | 詳見 `busybox/README-integration.md` |
 | 複製 applet + 函式庫檔案 | §2 Files to Add |
 | 修改 applets.h / Config.in / Kbuild | §4 Register the Applet |
-| `make defconfig && make -j$(nproc)` | §5 Build & Test |
+| `make allnoconfig && make oldconfig && make -j$(nproc)` | §5 Build & Test |
 | `./busybox lparser \| lfilter \| lstore` | 完整管線驗證 |
 
 ---

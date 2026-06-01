@@ -198,8 +198,9 @@ cp /path/to/busypipe/busybox/libpipe.h     include/libpipe.h
 # 修改 include/applets.h、miscutils/Config.in、
 # miscutils/Kbuild、libbb/Kbuild（見 §4）
 
-# 設定並啟用三個 applet
-make defconfig
+# 最小化設定：allnoconfig 預設停用所有 applet，避免 defconfig 啟用的
+# 大量 applet 與新版 kernel headers（6.x）產生相容性問題。
+make allnoconfig
 printf 'CONFIG_LPARSER=y\nCONFIG_LFILTER=y\nCONFIG_LSTORE=y\n' >> .config
 make oldconfig
 

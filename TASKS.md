@@ -154,7 +154,8 @@ cp ../busypipe/busybox/libpipe.h    include/libpipe.h
 # 在 libbb/Kbuild 加入共用函式庫
 echo "lib-y += busypipe_lib.o" >> libbb/Kbuild
 
-make defconfig
+# allnoconfig 避免 defconfig 啟用的 applet 與新版 kernel headers 的相容性問題
+make allnoconfig
 echo "CONFIG_LPARSER=y" >> .config
 echo "CONFIG_LFILTER=y" >> .config
 echo "CONFIG_LSTORE=y"  >> .config

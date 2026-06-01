@@ -6,7 +6,9 @@
 #   1. 下載 BusyBox 1.36.1 原始碼
 #   2. 複製 BusyPipe applet 檔案與共用函式庫
 #   3. Patch 四個 BusyBox 建置設定檔
-#   4. make defconfig + 啟用三個 applet + make
+#   4. make allnoconfig + 啟用三個 applet + make
+#      （allnoconfig 只啟用我們指定的 applet，避免 defconfig 啟用的大量
+#        applet 與新版 kernel headers 產生相容性問題）
 #   5. 驗證 --help 與完整管線
 #   6. 將編譯完成的 busybox binary 複製至 build/busybox
 #
@@ -146,13 +148,12 @@ fi
 echo ""
 echo "=== 步驟 4：設定 BusyBox 並編譯 ==="
 
-make defconfig
-# 啟用 BusyPipe applet
+# allnoconfig：所有 applet 預設停用，只啟用我們明確指定的項目。
+# 相較於 defconfig（啟用大量 applet），allnoconfig 完全避免
+# BusyBox 1.36.x 本身與新版 kernel headers（6.x）的相容性問題
+# （如 networking/tc.c 的 TCA_CBQ_MAX、modutils 的 MODULE_NAME_LEN 等）。
+make allnoconfig
 printf 'CONFIG_LPARSER=y\nCONFIG_LFILTER=y\nCONFIG_LSTORE=y\n' >> .config
-# BusyBox 1.36.x 的 networking/tc.c 使用已從新版 kernel headers（6.x）移除的
-# CBQ 常數（TCA_CBQ_MAX 等），在 gcc:14 / Debian bookworm 環境下會編譯失敗。
-# 停用 tc applet 以迴避此上游相容性問題。
-printf 'CONFIG_TC=n\n' >> .config
 make oldconfig
 
 echo ""
