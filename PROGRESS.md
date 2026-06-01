@@ -43,11 +43,12 @@
 
 ### BusyBox 整合
 
-- [x] `busybox/busypipe.h` — 共用常數與 inline helper
-- [x] `busybox/lparser_bb.c` — BusyBox applet 適配版
-- [x] `busybox/lfilter_bb.c` — BusyBox applet 適配版
-- [x] `busybox/lstore_bb.c`  — BusyBox applet 適配版
-- [x] `busybox/README-integration.md` — 完整整合指南（含 applets.h / Config.in / Kbuild 修改說明）
+- [x] `busybox/libpipe.h` — 共用函式庫介面（純宣告，無 static inline）
+- [x] `busybox/libpipe.c` — 共用函式庫實作（整合後放入 `libbb/busypipe_lib.c`）
+- [x] `busybox/lparser_bb.c` — BusyBox applet 適配版（入口：`lparser_main`）
+- [x] `busybox/lfilter_bb.c` — BusyBox applet 適配版（入口：`lfilter_main`）
+- [x] `busybox/lstore_bb.c`  — BusyBox applet 適配版（入口：`lstore_main`）
+- [x] `busybox/README-integration.md` — 完整整合指南（含 applets.h / Config.in / miscutils/Kbuild / libbb/Kbuild 修改說明）
 - [x] 所有 bb 版本編譯驗證通過
 
 ### 文件
@@ -133,8 +134,10 @@
 - 跨裝置時 fallback 為 copy + remove，確保不遺失資料
 
 ### BusyBox applet 架構
-- `main()` 改名為 `lparser_main()` 即可整合
-- `busypipe.h` 抽出共用 helper 以 `__attribute__((unused))` 避免警告
+- `main()` 改名為 `lXXX_main()` 並標記 `MAIN_EXTERNALLY_VISIBLE`
+- `libpipe.c` + `libpipe.h` 取代舊有 `busypipe.h` 的 static inline 做法
+- 三個 applet 共享同一份 `busypipe_lib.o`（對應 `libbb/busypipe_lib.c`）
+- `#ifndef BUSYBOX_BUILD` 包裝維持獨立編譯能力（不需完整 BusyBox 環境）
 - 使用 BusyBox `//usage:` 格式撰寫 help string
 
 ---

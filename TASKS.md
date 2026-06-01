@@ -139,13 +139,20 @@ make bench                            # Benchmark
 wget https://busybox.net/downloads/busybox-1.36.1.tar.bz2
 tar xf busybox-1.36.1.tar.bz2 && cd busybox-1.36.1
 
-# 複製適配版本
+# 複製 applet 適配版本
 cp ../busypipe/busybox/lparser_bb.c miscutils/lparser.c
 cp ../busypipe/busybox/lfilter_bb.c miscutils/lfilter.c
 cp ../busypipe/busybox/lstore_bb.c  miscutils/lstore.c
 
+# 複製共用函式庫（libpipe）
+cp ../busypipe/busybox/libpipe.c    libbb/busypipe_lib.c
+cp ../busypipe/busybox/libpipe.h    include/libpipe.h
+
 # 修改 include/applets.h、Config.in、miscutils/Kbuild
 # (詳見 busybox/README-integration.md §4)
+
+# 在 libbb/Kbuild 加入共用函式庫
+echo "lib-y += busypipe_lib.o" >> libbb/Kbuild
 
 make defconfig
 echo "CONFIG_LPARSER=y" >> .config

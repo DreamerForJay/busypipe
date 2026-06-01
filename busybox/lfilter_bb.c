@@ -1,7 +1,11 @@
-/* lfilter_bb.c — BusyBox applet adaptation of lfilter
+/* lfilter_bb.c — lfilter 的 BusyBox applet 適配版
  *
- * To integrate: cp lfilter_bb.c <busybox>/miscutils/lfilter.c
- * Then patch applets.h / Config.in / miscutils/Kbuild  (see README-integration.md)
+ * 整合至 BusyBox 原始碼樹：
+ *   cp lfilter_bb.c   <busybox>/miscutils/lfilter.c
+ *   cp libpipe.c      <busybox>/libbb/busypipe_lib.c   （若尚未複製）
+ *   cp libpipe.h      <busybox>/include/libpipe.h      （若尚未複製）
+ *
+ * 需修改的 BusyBox 檔案：詳見 README-integration.md
  */
 
 /*
@@ -17,19 +21,16 @@
 //usage:    "  --format csv|json           Output format (default csv)\n"
 */
 
-#include <ctype.h>
-#include <stdbool.h>
-#include <stdio.h>
+/* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <stdlib.h>
-#include <string.h>
-#include "busypipe.h"
+#include "libpipe.h"
 
 typedef enum { OP_NONE,OP_EQ,OP_NE,OP_GT,OP_GE,OP_LT,OP_LE } op_t;
 typedef enum { FMT_CSV, FMT_JSON } fmt_t;
 
-/* ── BusyBox entry point ─────────────────────────────────────────── */
-/* int lfilter_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE; */
-int main(int argc, char **argv) {
+/* ── BusyBox 整合入口 ──────────────────────────────────────────── */
+int lfilter_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int lfilter_main(int argc, char **argv) {
     char where_buf[256]={0}, sel_buf[1024]={0}, cont_buf[256]={0};
     bool has_where=false, has_sel=false, has_cont=false;
     char where_f[128]={0}, where_v[128]={0};
@@ -206,3 +207,8 @@ int main(int argc, char **argv) {
     }
     return 0;
 }
+
+/* 獨立執行入口（非 BusyBox 環境，不定義 BUSYBOX_BUILD 時編譯） */
+#ifndef BUSYBOX_BUILD
+int main(int argc, char **argv) { return lfilter_main(argc, argv); }
+#endif

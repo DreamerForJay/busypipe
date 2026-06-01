@@ -25,18 +25,20 @@ applet via `argv[0]` (or the first argument when invoked as
 
 ---
 
-## 2. Files to Add
+## 2. 需要加入的檔案
 
-Copy or symlink the following into the BusyBox source tree:
+將以下檔案複製至 BusyBox 原始碼樹：
 
 ```
 busybox-source/
   miscutils/
-    lparser.c        ← src/lparser.c (adapted; see §3)
-    lfilter.c        ← src/lfilter.c (adapted; see §3)
-    lstore.c         ← src/lstore.c  (adapted; see §3)
+    lparser.c          ← busybox/lparser_bb.c（applet 入口：lparser_main）
+    lfilter.c          ← busybox/lfilter_bb.c（applet 入口：lfilter_main）
+    lstore.c           ← busybox/lstore_bb.c （applet 入口：lstore_main）
+  libbb/
+    busypipe_lib.c     ← busybox/libpipe.c（共用函式庫實作，編譯進 libbb.a）
   include/
-    busypipe.h       ← busybox/busypipe.h (shared constants)
+    libpipe.h          ← busybox/libpipe.h（共用函式庫介面，僅宣告）
 ```
 
 ---
@@ -92,15 +94,21 @@ BusyBox uses a special comment format for the usage string:
 //usage:    …
 ```
 
-### 3.5 Common library (`common.c` → `libbb` or inline)
+### 3.5 共用函式庫（`libpipe.c` → `libbb/`）
 
-Either:
-- Move shared functions (`split_csv_inplace`, `print_csv_row`, etc.) into
-  `libbb/` as `busypipe_common.c`, or
-- Include them as a static helper file compiled into each applet.
+共用邏輯已提取為獨立的 `libpipe.c` + `libpipe.h`，取代舊有 `busypipe.h`
+的 `static inline` 做法（每個 applet 各複製一份）。
 
-The simpler path for first integration is to `#include "busypipe_common.c"`
-directly — not ideal but functional for a prototype.
+整合步驟：
+
+1. 複製 `busybox/libpipe.c` 至 `<busybox>/libbb/busypipe_lib.c`
+2. 複製 `busybox/libpipe.h` 至 `<busybox>/include/libpipe.h`
+3. 在 `libbb/Kbuild` 加入（見 §4.4）：
+   ```make
+   lib-y += busypipe_lib.o
+   ```
+
+如此三個 applet 共享同一份 `busypipe_lib.o`，符合 BusyBox `libbb` 的函式庫架構。
 
 ---
 
@@ -153,6 +161,17 @@ lib-$(CONFIG_LPARSER) += lparser.o
 lib-$(CONFIG_LFILTER) += lfilter.o
 lib-$(CONFIG_LSTORE)  += lstore.o
 ```
+
+### 4.4 `libbb/Kbuild`
+
+在現有 `lib-y` 清單後加入：
+
+```make
+lib-y += busypipe_lib.o
+```
+
+此行使 `busypipe_lib.c`（由 `busybox/libpipe.c` 複製而來）編譯進 `libbb.a`，
+三個 applet 共享同一份實作，不需各自內嵌 static 函式。
 
 ---
 
@@ -213,13 +232,12 @@ compatible with BusyBox's `getopt_ulflags()` / `opt_complementary`.
 
 ---
 
-## 7. Prototype BusyBox-adapted Sources
+## 7. 本目錄檔案一覽
 
-See the files in this directory:
-
-| File | Description |
+| 檔案 | 說明 |
 |---|---|
-| `lparser_bb.c` | lparser adapted for BusyBox applet ABI |
-| `lfilter_bb.c` | lfilter adapted for BusyBox applet ABI |
-| `lstore_bb.c`  | lstore adapted for BusyBox applet ABI |
-| `busypipe.h`   | Shared constants (MAX_LINE_LEN, MAX_FIELDS, …) |
+| `lparser_bb.c` | lparser applet（入口：`lparser_main`，含 `MAIN_EXTERNALLY_VISIBLE`）|
+| `lfilter_bb.c` | lfilter applet（入口：`lfilter_main`，含 `MAIN_EXTERNALLY_VISIBLE`）|
+| `lstore_bb.c`  | lstore applet（入口：`lstore_main`，含 `MAIN_EXTERNALLY_VISIBLE`）|
+| `libpipe.c`    | 共用函式庫實作（對應 `libbb/busypipe_lib.c`）|
+| `libpipe.h`    | 共用函式庫介面（純宣告，無 static inline）|

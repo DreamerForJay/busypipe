@@ -191,10 +191,11 @@ busypipe/
 ├── include/
 │   └── common.h           共用標頭
 ├── busybox/
-│   ├── busypipe.h         BusyBox 版本共用標頭
-│   ├── lparser_bb.c       BusyBox applet 適配版
-│   ├── lfilter_bb.c       BusyBox applet 適配版
-│   ├── lstore_bb.c        BusyBox applet 適配版
+│   ├── libpipe.h          共用函式庫介面（純宣告，對應 include/libpipe.h）
+│   ├── libpipe.c          共用函式庫實作（對應 libbb/busypipe_lib.c）
+│   ├── lparser_bb.c       BusyBox applet 適配版（入口：lparser_main）
+│   ├── lfilter_bb.c       BusyBox applet 適配版（入口：lfilter_main）
+│   ├── lstore_bb.c        BusyBox applet 適配版（入口：lstore_main）
 │   └── README-integration.md  BusyBox 整合指南
 ├── docs/
 │   ├── spec.md            開發規格
@@ -273,10 +274,13 @@ gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
 整合步驟摘要：
 
 1. 將 `busybox/lparser_bb.c`、`lfilter_bb.c`、`lstore_bb.c` 複製到 `<busybox>/miscutils/`
-2. 在 `include/applets.h` 加入三個 `APPLET()` 宣告
-3. 在 `Config.in` 加入 Kconfig block
-4. 在 `miscutils/Kbuild` 加入 `lib-$(CONFIG_…)` 行
-5. `make defconfig && make -j$(nproc)`
+2. 將 `busybox/libpipe.c` 複製到 `<busybox>/libbb/busypipe_lib.c`（共用函式庫）
+3. 將 `busybox/libpipe.h` 複製到 `<busybox>/include/libpipe.h`
+4. 在 `libbb/Kbuild` 加入 `lib-y += busypipe_lib.o`
+5. 在 `include/applets.h` 加入三個 `APPLET()` 宣告
+6. 在 `Config.in` 加入 Kconfig block
+7. 在 `miscutils/Kbuild` 加入 `lib-$(CONFIG_…)` 行
+8. `make defconfig && make -j$(nproc)`
 
 ---
 

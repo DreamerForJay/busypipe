@@ -1,12 +1,15 @@
-/* lparser_bb.c — BusyBox applet adaptation of lparser
+/* lparser_bb.c — lparser 的 BusyBox applet 適配版
  *
- * To integrate into BusyBox source tree:
- *   cp lparser_bb.c  <busybox>/miscutils/lparser.c
+ * 整合至 BusyBox 原始碼樹：
+ *   cp lparser_bb.c   <busybox>/miscutils/lparser.c
+ *   cp libpipe.c      <busybox>/libbb/busypipe_lib.c
+ *   cp libpipe.h      <busybox>/include/libpipe.h
  *
- * Then patch:
- *   include/applets.h  — add  IF_LPARSER(APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP))
- *   Config.in          — add  config LPARSER block
- *   miscutils/Kbuild   — add  lib-$(CONFIG_LPARSER) += lparser.o
+ * 需修改的 BusyBox 檔案：
+ *   include/applets.h  — 加入  IF_LPARSER(APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP))
+ *   Config.in          — 加入  config LPARSER block
+ *   miscutils/Kbuild   — 加入  lib-$(CONFIG_LPARSER) += lparser.o
+ *   libbb/Kbuild       — 加入  lib-y += busypipe_lib.o
  */
 
 /*
@@ -29,14 +32,10 @@
 //usage:    "  auth    SSH auth.log (sshd Failed/Accepted password)\n"
 */
 
-/* ── In BusyBox: replace these includes with #include "libbb.h" ── */
-#include <ctype.h>
-#include <stdbool.h>
-#include <stdio.h>
+/* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <stdlib.h>
-#include <string.h>
 #include <regex.h>
-#include "busypipe.h"
+#include "libpipe.h"
 
 /* ── Built-in log format definitions ─────────────────────────────── */
 typedef struct { const char *name, *regex, *fields; } bp_format_t;
@@ -56,9 +55,9 @@ static const bp_format_t BP_FORMATS[] = {
     { NULL, NULL, NULL }
 };
 
-/* ── BusyBox entry point (rename main → lparser_main) ──────────── */
-/* int lparser_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE; */
-int main(int argc, char **argv) {   /* standalone build */
+/* ── BusyBox 整合入口 ──────────────────────────────────────────── */
+int lparser_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int lparser_main(int argc, char **argv) {
     const char *regex_pat = NULL;
     char fields_buf[1024] = {0};
     bp_list_t fields;
@@ -156,3 +155,8 @@ int main(int argc, char **argv) {   /* standalone build */
     regfree(&re);
     return 0;
 }
+
+/* 獨立執行入口（非 BusyBox 環境，不定義 BUSYBOX_BUILD 時編譯） */
+#ifndef BUSYBOX_BUILD
+int main(int argc, char **argv) { return lparser_main(argc, argv); }
+#endif
