@@ -33,6 +33,7 @@
 /* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include "libpipe.h"
 

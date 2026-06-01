@@ -34,6 +34,7 @@
 
 /* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <stdlib.h>
+#include <string.h>
 #include <regex.h>
 #include "libpipe.h"
 

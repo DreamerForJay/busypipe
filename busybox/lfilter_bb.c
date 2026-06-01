@@ -23,6 +23,7 @@
 
 /* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <stdlib.h>
+#include <string.h>
 #include "libpipe.h"
 
 typedef enum { OP_NONE,OP_EQ,OP_NE,OP_GT,OP_GE,OP_LT,OP_LE } op_t;
