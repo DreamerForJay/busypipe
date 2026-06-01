@@ -44,7 +44,8 @@
 | 11 | PS1 `ParseException`（`}`unexpected）| UTF-8 無 BOM 檔案在繁中 Windows 以 Big5 讀取，中文字節序造成語法錯誤 | PS1 腳本全改為 ASCII/English |
 | 12 | PS1 `"$var.ext"` 成空字串 | PowerShell 把 `.ext` 解釋為 `$var` 的屬性存取 | 改用 `${var}.ext` 或 `$var + ".ext"` |
 | 13 | `include/applets.h: No such file` | 誤以為 tarball 內有 `applets.h`；實際是 generated file | 改為檢查 `include/applets.src.h` |
-| 14 | tarball 解壓縮後目錄不完整 | 上次失敗的不完整 tarball 被重用，`tar xf` 靜默部分解壓 | 加 `tar tf` 驗證；改用明確的 `tar xjf`（-j = bzip2）|
+| 14 | tarball 解壓縮後目錄不完整 | 上次失敗的不完整 tarball 被重用，`tar xf` 靜默部分解壓 | 加 `tar tf` 驗證；改用明確的 `tar xjf`（-j = bzip2）| 
+| 15 | 每次缺少不同 applet（隨機性）| `gen_build_files.sh` 掃描順序不確定，help 文字行長觸發 Kconfig "Overlong line"，落在錯誤位置的 applet 不寫入 `autoconf.h` | 完全移除 `//config:` 的 `help` 區塊（Kconfig help 為選用）|
 
 ---
 
