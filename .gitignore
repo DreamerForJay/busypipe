@@ -3,3 +3,4 @@ data/
 *.o
 *.exe
 *.tmp
+busybox-1.36.1*

@@ -12,7 +12,7 @@ COMMON_OBJ := $(BUILD_DIR)/common.o
 
 TARGETS := $(BUILD_DIR)/lparser $(BUILD_DIR)/lfilter $(BUILD_DIR)/lstore
 
-.PHONY: all clean dirs install bench test help
+.PHONY: all clean dirs install bench test test-bb help
 
 all: dirs $(TARGETS)
 
@@ -82,6 +82,12 @@ test: all
 	@./$(BUILD_DIR)/lstore --db $(DATA_DIR)/test.tsv --cleanup --stats
 	@rm -f $(DATA_DIR)/test.tsv
 	@echo "=== All tests passed ==="
+
+# ── BusyBox applet 適配版驗證 ─────────────────────────────────────────────
+# 不需要 BusyBox 原始碼，直接以 gcc 編譯 busybox/libpipe.c + *_bb.c。
+# 同時驗證 lXXX_main() 功能正確性與 standalone 輸出一致性（需先執行 make）。
+test-bb: all
+	@bash scripts/test_bb_applets.sh
 
 # ── benchmark ───────────────────────────────────────────────────────────────
 bench: all

@@ -1,42 +1,42 @@
-/* lparser_bb.c — BusyBox applet adaptation of lparser
+/* lparser_bb.c — lparser 的 BusyBox applet 適配版
  *
- * To integrate into BusyBox source tree:
- *   cp lparser_bb.c  <busybox>/miscutils/lparser.c
+ * 整合至 BusyBox 原始碼樹：
+ *   cp lparser_bb.c   <busybox>/miscutils/lparser.c
+ *   cp libpipe.c      <busybox>/libbb/busypipe_lib.c
+ *   cp libpipe.h      <busybox>/include/libpipe.h
  *
- * Then patch:
- *   include/applets.h  — add  IF_LPARSER(APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP))
- *   Config.in          — add  config LPARSER block
- *   miscutils/Kbuild   — add  lib-$(CONFIG_LPARSER) += lparser.o
+ * 執行 scripts/gen_build_files.sh 後，下方 //applet: //kbuild: //config: 指令
+ * 會自動生成 include/applets.h、miscutils/Kbuild、miscutils/Config.in 的對應項目。
  */
+//applet:IF_LPARSER(APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP))
+//kbuild:lib-$(CONFIG_LPARSER) += lparser.o
+//kbuild:CFLAGS_lparser.o += -DBUSYBOX_BUILD
+//config:config LPARSER
+//config:	bool "lparser"
+//config:	default y
+//config:	help
+//config:	  Log parser applet. Part of BusyPipe embedded ETL pipeline.
+//config:	  Parses raw log lines (nginx/apache/auth) into CSV or JSONL.
 
-/*
-//usage:#define lparser_trivial_usage \
-//usage:    "--regex PATTERN --fields f1,f2[,...] [--csv|--json] [--stats]\n" \
+//usage:#define lparser_trivial_usage "--regex PATTERN --fields f1,f2[,...] [--csv|--json] [--stats]"
 //usage:    "  or: --format nginx|apache|auth [--csv|--json] [--stats]"
-//usage:#define lparser_full_usage "\n\n" \
-//usage:    "Parse raw log lines into structured CSV or JSONL output.\n" \
-//usage:    "\n" \
-//usage:    "Options:\n" \
-//usage:    "  --regex PATTERN   POSIX extended regex (capture groups = fields)\n" \
-//usage:    "  --fields f1,...   Field names (count must match capture groups)\n" \
-//usage:    "  --format NAME     Built-in format: nginx, apache, auth\n" \
-//usage:    "  --csv             Output CSV with header (default)\n" \
-//usage:    "  --json            Output JSONL\n" \
-//usage:    "  --stats           Print matched/skipped stats to stderr\n" \
-//usage:    "\nBuilt-in formats:\n" \
-//usage:    "  nginx   Nginx/Apache Combined Access Log\n" \
-//usage:    "  apache  Apache Common Log Format\n" \
-//usage:    "  auth    SSH auth.log (sshd Failed/Accepted password)\n"
-*/
+//usage:#define lparser_full_usage "\n\n"
+//usage:    "Parse raw log lines into structured CSV or JSONL output.\n"
+//usage:    "\n"
+//usage:    "Options:\n"
+//usage:    "  --regex PATTERN   POSIX extended regex (capture groups = fields)\n"
+//usage:    "  --fields f1,...   Field names (count must match capture groups)\n"
+//usage:    "  --format NAME     Built-in format: nginx, apache, auth\n"
+//usage:    "  --csv             Output CSV with header (default)\n"
+//usage:    "  --json            Output JSONL\n"
+//usage:    "  --stats           Print matched/skipped stats to stderr\n"
+//usage:    "\nBuilt-in formats: nginx  apache  auth\n"
 
-/* ── In BusyBox: replace these includes with #include "libbb.h" ── */
-#include <ctype.h>
-#include <stdbool.h>
-#include <stdio.h>
+/* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <stdlib.h>
 #include <string.h>
 #include <regex.h>
-#include "busypipe.h"
+#include "libpipe.h"
 
 /* ── Built-in log format definitions ─────────────────────────────── */
 typedef struct { const char *name, *regex, *fields; } bp_format_t;
@@ -56,9 +56,9 @@ static const bp_format_t BP_FORMATS[] = {
     { NULL, NULL, NULL }
 };
 
-/* ── BusyBox entry point (rename main → lparser_main) ──────────── */
-/* int lparser_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE; */
-int main(int argc, char **argv) {   /* standalone build */
+/* ── BusyBox 整合入口 ──────────────────────────────────────────── */
+int lparser_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int lparser_main(int argc, char **argv) {
     const char *regex_pat = NULL;
     char fields_buf[1024] = {0};
     bp_list_t fields;
@@ -156,3 +156,8 @@ int main(int argc, char **argv) {   /* standalone build */
     regfree(&re);
     return 0;
 }
+
+/* 獨立執行入口（非 BusyBox 環境，不定義 BUSYBOX_BUILD 時編譯） */
+#ifndef BUSYBOX_BUILD
+int main(int argc, char **argv) { return lparser_main(argc, argv); }
+#endif

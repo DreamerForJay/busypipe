@@ -1,46 +1,50 @@
-/* lstore_bb.c — BusyBox applet adaptation of lstore
+/* lstore_bb.c — lstore 的 BusyBox applet 適配版
  *
- * To integrate: cp lstore_bb.c <busybox>/miscutils/lstore.c
- * Then patch applets.h / Config.in / miscutils/Kbuild  (see README-integration.md)
+ * 整合至 BusyBox 原始碼樹：
+ *   cp lstore_bb.c    <busybox>/miscutils/lstore.c
+ *   cp libpipe.c      <busybox>/libbb/busypipe_lib.c   （若尚未複製）
+ *   cp libpipe.h      <busybox>/include/libpipe.h      （若尚未複製）
+ *
+ * 執行 scripts/gen_build_files.sh 後，下方指令自動生成對應 applets.h/Kbuild/Config.in。
  */
+//applet:IF_LSTORE(APPLET(lstore, BB_DIR_USR_BIN, BB_SUID_DROP))
+//kbuild:lib-$(CONFIG_LSTORE) += lstore.o
+//kbuild:CFLAGS_lstore.o += -DBUSYBOX_BUILD
+//config:config LSTORE
+//config:	bool "lstore"
+//config:	default y
+//config:	help
+//config:	  File-backed key-value store applet. Part of BusyPipe embedded ETL pipeline.
+//config:	  Supports put/get/delete/list/cleanup/count with TTL.
 
-/*
-//usage:#define lstore_trivial_usage \
-//usage:    "--db PATH --put --key-field FIELD [--ttl SEC] [--stats] |\n" \
-//usage:    "           --get KEY | --delete KEY | --list | --cleanup | --count"
-//usage:#define lstore_full_usage "\n\n" \
-//usage:    "File-backed key-value store with TTL support.\n" \
-//usage:    "\n" \
-//usage:    "Storage format:  key<TAB>expires_epoch<TAB>raw_csv_row\n" \
-//usage:    "\n" \
-//usage:    "Options:\n" \
-//usage:    "  --db PATH         Database file path (TSV)\n" \
-//usage:    "  --put             Read CSV from stdin, append to db\n" \
-//usage:    "    --key-field F   CSV column used as key\n" \
-//usage:    "    --ttl SEC       Expiry in seconds (0 = never)\n" \
-//usage:    "  --get KEY         Print most-recent non-expired record\n" \
-//usage:    "  --delete KEY      Remove all records with KEY\n" \
-//usage:    "  --list            Print all valid records\n" \
-//usage:    "  --cleanup         Rewrite db, remove expired records\n" \
-//usage:    "  --count           Print number of valid records\n" \
-//usage:    "  --stats           Print operation stats to stderr\n"
-*/
+//usage:#define lstore_trivial_usage "--db PATH --put --key-field F [--ttl SEC] | --get KEY | --delete KEY | --list | --cleanup | --count"
+//usage:#define lstore_full_usage "\n\n"
+//usage:    "File-backed key-value store with TTL support.\n"
+//usage:    "Storage: key TAB expires_epoch TAB raw_csv_row\n"
+//usage:    "\n"
+//usage:    "  --db PATH         Database file (TSV)\n"
+//usage:    "  --put             Read CSV from stdin, append to db\n"
+//usage:    "    --key-field F   CSV column used as key\n"
+//usage:    "    --ttl SEC       Expiry in seconds (0 = never)\n"
+//usage:    "  --get KEY         Print most-recent non-expired record\n"
+//usage:    "  --delete KEY      Remove all records with KEY\n"
+//usage:    "  --list / --count / --cleanup / --stats\n"
 
+/* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <errno.h>
-#include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "busypipe.h"
+#include "libpipe.h"
 
 /* Buffered-write tuneables — match main lstore.c */
 #define BB_WRITE_BUF_LINES  64
 #define BB_WRITE_BUF_BYTES  (128*1024)
 
+/* 避免與 POSIX / Windows pthread_compat.h 的 mode_t 衝突 */
 typedef enum {
     M_NONE,M_PUT,M_GET,M_DEL,M_LIST,M_CLEANUP,M_COUNT
-} mode_t;
+} store_op_t;
 
 static long now_sec(void) { return (long)time(NULL); }
 static bool expired(long e) { return e!=0 && e<=now_sec(); }
@@ -55,10 +59,10 @@ static bool parse_record(char *line, char **key, long *exp, char **val) {
     return true;
 }
 
-/* ── BusyBox entry point ─────────────────────────────────────────── */
-/* int lstore_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE; */
-int main(int argc, char **argv) {
-    mode_t mode=M_NONE;
+/* ── BusyBox 整合入口 ──────────────────────────────────────────── */
+int lstore_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int lstore_main(int argc, char **argv) {
+    store_op_t mode=M_NONE;
     const char *db=NULL, *key_arg=NULL;
     char key_field[128]={0};
     long ttl=0;
@@ -201,3 +205,8 @@ int main(int argc, char **argv) {
         fprintf(stderr,"scan: total=%lu kept=%lu removed=%lu\n",total,kept,removed);
     return 0;
 }
+
+/* 獨立執行入口（非 BusyBox 環境，不定義 BUSYBOX_BUILD 時編譯） */
+#ifndef BUSYBOX_BUILD
+int main(int argc, char **argv) { return lstore_main(argc, argv); }
+#endif

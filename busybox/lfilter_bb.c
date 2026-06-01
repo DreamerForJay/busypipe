@@ -1,35 +1,43 @@
-/* lfilter_bb.c — BusyBox applet adaptation of lfilter
+/* lfilter_bb.c — lfilter 的 BusyBox applet 適配版
  *
- * To integrate: cp lfilter_bb.c <busybox>/miscutils/lfilter.c
- * Then patch applets.h / Config.in / miscutils/Kbuild  (see README-integration.md)
+ * 整合至 BusyBox 原始碼樹：
+ *   cp lfilter_bb.c   <busybox>/miscutils/lfilter.c
+ *   cp libpipe.c      <busybox>/libbb/busypipe_lib.c   （若尚未複製）
+ *   cp libpipe.h      <busybox>/include/libpipe.h      （若尚未複製）
+ *
+ * 執行 scripts/gen_build_files.sh 後，下方指令自動生成對應 applets.h/Kbuild/Config.in。
  */
+//applet:IF_LFILTER(APPLET(lfilter, BB_DIR_USR_BIN, BB_SUID_DROP))
+//kbuild:lib-$(CONFIG_LFILTER) += lfilter.o
+//kbuild:CFLAGS_lfilter.o += -DBUSYBOX_BUILD
+//config:config LFILTER
+//config:	bool "lfilter"
+//config:	default y
+//config:	help
+//config:	  CSV stream filter applet. Part of BusyPipe embedded ETL pipeline.
+//config:	  Filters rows by condition, projects fields, outputs CSV or JSONL.
 
-/*
-//usage:#define lfilter_trivial_usage \
-//usage:    "[--where expr] [--select f1,f2,...] [--contains f=sub] [--format csv|json]"
-//usage:#define lfilter_full_usage "\n\n" \
-//usage:    "Filter and project a CSV stream.\n" \
-//usage:    "\n" \
-//usage:    "Options:\n" \
-//usage:    "  --where  \"field<op>value\"  Comparison filter (==!=><>=<=)\n" \
-//usage:    "  --contains \"field=substr\"  Substring filter\n" \
-//usage:    "  --select \"f1,f2,...\"        Field projection\n" \
-//usage:    "  --format csv|json           Output format (default csv)\n"
-*/
+//usage:#define lfilter_trivial_usage "[--where expr] [--select f1,f2,...] [--contains f=sub] [--format csv|json]"
+//usage:#define lfilter_full_usage "\n\n"
+//usage:    "Filter and project a CSV stream.\n"
+//usage:    "\n"
+//usage:    "Options:\n"
+//usage:    "  --where  FIELD<OP>VALUE  Comparison filter (==!=><>=<=)\n"
+//usage:    "  --contains FIELD=SUBSTR  Substring filter\n"
+//usage:    "  --select f1,f2,...       Field projection\n"
+//usage:    "  --format csv|json        Output format (default csv)\n"
 
-#include <ctype.h>
-#include <stdbool.h>
-#include <stdio.h>
+/* ── 獨立編譯時使用；BusyBox 整合時將以下替換為 #include "libbb.h" ── */
 #include <stdlib.h>
 #include <string.h>
-#include "busypipe.h"
+#include "libpipe.h"
 
 typedef enum { OP_NONE,OP_EQ,OP_NE,OP_GT,OP_GE,OP_LT,OP_LE } op_t;
 typedef enum { FMT_CSV, FMT_JSON } fmt_t;
 
-/* ── BusyBox entry point ─────────────────────────────────────────── */
-/* int lfilter_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE; */
-int main(int argc, char **argv) {
+/* ── BusyBox 整合入口 ──────────────────────────────────────────── */
+int lfilter_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int lfilter_main(int argc, char **argv) {
     char where_buf[256]={0}, sel_buf[1024]={0}, cont_buf[256]={0};
     bool has_where=false, has_sel=false, has_cont=false;
     char where_f[128]={0}, where_v[128]={0};
@@ -206,3 +214,8 @@ int main(int argc, char **argv) {
     }
     return 0;
 }
+
+/* 獨立執行入口（非 BusyBox 環境，不定義 BUSYBOX_BUILD 時編譯） */
+#ifndef BUSYBOX_BUILD
+int main(int argc, char **argv) { return lfilter_main(argc, argv); }
+#endif
