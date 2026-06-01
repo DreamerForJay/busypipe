@@ -13,8 +13,7 @@
 //config:config LSTORE
 //config:	bool "lstore"
 //config:	default y
-//config:	help
-//config:	  BusyPipe key-value store with TTL (put/get/delete/list).
+
 
 //usage:#define lstore_trivial_usage "--db PATH --put --key-field F [--ttl SEC] | --get KEY | --delete KEY | --list | --cleanup | --count"
 //usage:#define lstore_full_usage "\n\n"

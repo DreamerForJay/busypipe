@@ -13,8 +13,7 @@
 //config:config LFILTER
 //config:	bool "lfilter"
 //config:	default y
-//config:	help
-//config:	  BusyPipe CSV stream filter (--where/--select/--contains).
+
 
 //usage:#define lfilter_trivial_usage "[--where expr] [--select f1,f2,...] [--contains f=sub] [--format csv|json]"
 //usage:#define lfilter_full_usage "\n\n"
