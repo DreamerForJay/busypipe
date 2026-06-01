@@ -5,8 +5,17 @@
  *   cp libpipe.c      <busybox>/libbb/busypipe_lib.c   （若尚未複製）
  *   cp libpipe.h      <busybox>/include/libpipe.h      （若尚未複製）
  *
- * 需修改的 BusyBox 檔案：詳見 README-integration.md
+ * 執行 scripts/gen_build_files.sh 後，下方指令自動生成對應 applets.h/Kbuild/Config.in。
  */
+//applet:IF_LSTORE(APPLET(lstore, BB_DIR_USR_BIN, BB_SUID_DROP))
+//kbuild:lib-$(CONFIG_LSTORE) += lstore.o
+//kbuild:CFLAGS_lstore.o += -DBUSYBOX_BUILD
+//config:config LSTORE
+//config:	bool "lstore"
+//config:	default y
+//config:	help
+//config:	  File-backed key-value store applet. Part of BusyPipe embedded ETL pipeline.
+//config:	  Supports put/get/delete/list/cleanup/count with TTL.
 
 /*
 //usage:#define lstore_trivial_usage \

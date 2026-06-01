@@ -5,8 +5,17 @@
  *   cp libpipe.c      <busybox>/libbb/busypipe_lib.c   （若尚未複製）
  *   cp libpipe.h      <busybox>/include/libpipe.h      （若尚未複製）
  *
- * 需修改的 BusyBox 檔案：詳見 README-integration.md
+ * 執行 scripts/gen_build_files.sh 後，下方指令自動生成對應 applets.h/Kbuild/Config.in。
  */
+//applet:IF_LFILTER(APPLET(lfilter, BB_DIR_USR_BIN, BB_SUID_DROP))
+//kbuild:lib-$(CONFIG_LFILTER) += lfilter.o
+//kbuild:CFLAGS_lfilter.o += -DBUSYBOX_BUILD
+//config:config LFILTER
+//config:	bool "lfilter"
+//config:	default y
+//config:	help
+//config:	  CSV stream filter applet. Part of BusyPipe embedded ETL pipeline.
+//config:	  Filters rows by condition, projects fields, outputs CSV or JSONL.
 
 /*
 //usage:#define lfilter_trivial_usage \

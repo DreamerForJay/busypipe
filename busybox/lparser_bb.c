@@ -5,12 +5,18 @@
  *   cp libpipe.c      <busybox>/libbb/busypipe_lib.c
  *   cp libpipe.h      <busybox>/include/libpipe.h
  *
- * 需修改的 BusyBox 檔案：
- *   include/applets.h  — 加入  IF_LPARSER(APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP))
- *   Config.in          — 加入  config LPARSER block
- *   miscutils/Kbuild   — 加入  lib-$(CONFIG_LPARSER) += lparser.o
- *   libbb/Kbuild       — 加入  lib-y += busypipe_lib.o
+ * 執行 scripts/gen_build_files.sh 後，下方 //applet: //kbuild: //config: 指令
+ * 會自動生成 include/applets.h、miscutils/Kbuild、miscutils/Config.in 的對應項目。
  */
+//applet:IF_LPARSER(APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP))
+//kbuild:lib-$(CONFIG_LPARSER) += lparser.o
+//kbuild:CFLAGS_lparser.o += -DBUSYBOX_BUILD
+//config:config LPARSER
+//config:	bool "lparser"
+//config:	default y
+//config:	help
+//config:	  Log parser applet. Part of BusyPipe embedded ETL pipeline.
+//config:	  Parses raw log lines (nginx/apache/auth) into CSV or JSONL.
 
 /*
 //usage:#define lparser_trivial_usage \
