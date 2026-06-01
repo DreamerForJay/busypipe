@@ -70,13 +70,7 @@ cp "${ROOT}/busybox/lstore_bb.c"   miscutils/lstore.c
 cp "${ROOT}/busybox/libpipe.c"     libbb/busypipe_lib.c
 cp "${ROOT}/busybox/libpipe.h"     include/libpipe.h
 echo "  miscutils/{lparser,lfilter,lstore}.c（含 //applet: //kbuild: //config: directive）"
-echo "  libbb/busypipe_lib.c  include/libpipe.h"
-
-# libpipe 共用函式庫加入 libbb（不是 applet，無法用 directive，直接 patch）
-if ! grep -q "busypipe_lib" libbb/Kbuild; then
-    printf 'lib-y += busypipe_lib.o\n' >> libbb/Kbuild
-    echo "  [PATCH] libbb/Kbuild += busypipe_lib.o"
-fi
+echo "  libbb/busypipe_lib.c（含 //kbuild:lib-y += busypipe_lib.o）  include/libpipe.h"
 
 # --- 3. 執行 gen_build_files.sh ---
 echo ""
@@ -89,6 +83,15 @@ for f in miscutils/lparser.c miscutils/lfilter.c miscutils/lstore.c libbb/busypi
 done
 echo "  [CRLF] 已轉換 miscutils/*.c libbb/busypipe_lib.c 為 Unix LF"
 bash scripts/gen_build_files.sh . .
+
+# libbb/Kbuild 的 patch 必須在 gen_build_files.sh 之後——
+# gen_build_files.sh 可能從 Kbuild.src 重新生成 libbb/Kbuild，
+# 覆蓋我們先前的手動 patch。
+# busypipe_lib.c 的 //kbuild: directive 應已處理，此行為保底。
+if ! grep -q "busypipe_lib" libbb/Kbuild; then
+    printf 'lib-y += busypipe_lib.o\n' >> libbb/Kbuild
+    echo "  [PATCH] libbb/Kbuild += busypipe_lib.o（gen 後補）"
+fi
 
 echo "--- 診斷：gen_build_files.sh 後的結果 ---"
 echo "[applets.h] LPARSER 項目："

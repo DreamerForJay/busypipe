@@ -3,12 +3,10 @@
  * 三個 applet（lparser、lfilter、lstore）共用此模組，
  * 每個函式只編譯一份，避免舊有 static inline 各自複製的問題。
  *
- * 整合進 BusyBox 時的放置位置：
- *   cp busybox/libpipe.c  <busybox>/libbb/busypipe_lib.c
- *   cp busybox/libpipe.h  <busybox>/include/libpipe.h
- * 並在 libbb/Kbuild 加入：
- *   lib-y += busypipe_lib.o
+ * 整合進 BusyBox 時放置於 libbb/busypipe_lib.c；
+ * gen_build_files.sh 會掃描此 //kbuild: directive 並自動更新 libbb/Kbuild。
  */
+//kbuild:lib-y += busypipe_lib.o
 
 #include "libpipe.h"
 #include <ctype.h>
