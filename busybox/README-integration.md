@@ -1,27 +1,25 @@
-# BusyPipe × BusyBox Integration Guide
+# BusyPipe × BusyBox 整合指南
 
-This document explains how to integrate the three BusyPipe applets
-(`lparser`, `lfilter`, `lstore`) into a BusyBox source tree so they are
-compiled into the single `busybox` multi-call binary.
+本文說明如何將三個 BusyPipe applet（`lparser`、`lfilter`、`lstore`）
+整合進 BusyBox 原始碼樹，使其編譯為單一 `busybox` multi-call binary。
 
 ---
 
-## 1. BusyBox Applet Architecture
+## 1. BusyBox Applet 架構
 
-BusyBox is a collection of Unix utilities compiled into one binary.
-Each utility is called an **applet**.  The binary dispatches to the right
-applet via `argv[0]` (or the first argument when invoked as
-`busybox <applet> …`).
+BusyBox 是將眾多 Unix 工具集合成一支執行檔的工具集。
+每個工具稱為 **applet**，執行檔透過 `argv[0]`（或 `busybox <applet> …` 的第一個參數）
+派發至對應 applet。
 
-### Key source files to understand
+### 關鍵原始碼檔案
 
-| File | Purpose |
+| 檔案 | 用途 |
 |---|---|
-| `include/applets.h` | Declares every applet with `APPLET(name, …)` macros |
-| `include/applet_tables.h` | Generated applet lookup table |
-| `Config.in` (top-level) | Kconfig menu entries for each applet |
-| `miscutils/` | Where new misc applets typically live |
-| `libbb/` | Shared utility library (like BusyPipe's `common.c`) |
+| `include/applets.h` | 以 `APPLET(name, …)` 巨集宣告每個 applet |
+| `include/applet_tables.h` | 建置時自動產生的 applet 查找表 |
+| `Config.in`（頂層）| 每個 applet 的 Kconfig 選單項目 |
+| `miscutils/` | 新雜項 applet 的慣用放置目錄 |
+| `libbb/` | 共用工具函式庫（對應 BusyPipe 的 `common.c`）|
 
 ---
 
@@ -43,48 +41,52 @@ busybox-source/
 
 ---
 
-## 3. Source Adaptations Required
+## 3. 需要的原始碼調整
 
-BusyBox applets follow a strict naming convention:
+BusyBox applet 遵循嚴格的命名規範，以下說明各項調整（均已在 `*_bb.c` 中完成）。
 
-### 3.1 Entry point rename
+### 3.1 入口函式重新命名
 
-Each applet's `main()` must be renamed to `<applet>_main()`:
+每個 applet 的 `main()` 必須改名為 `<applet>_main()`，
+並加上 `MAIN_EXTERNALLY_VISIBLE` 屬性：
 
 ```c
-/* standalone: */   int main(int argc, char **argv) { … }
-/* BusyBox:    */   int lparser_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+/* 獨立執行版 */   int main(int argc, char **argv) { … }
+/* BusyBox 版  */  int lparser_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 ```
 
-### 3.2 Remove `#include <stdio.h>` / system headers
+`#ifndef BUSYBOX_BUILD` 包裝提供獨立編譯時的 `main()` 入口，
+BusyBox 建置時透過 `-DBUSYBOX_BUILD` 停用它（見 §4.3）。
 
-Replace with BusyBox's `libbb.h`:
+### 3.2 系統標頭替換
+
+BusyBox 整合後，將獨立的系統標頭替換為 BusyBox 的統一標頭：
 
 ```c
-/* standalone */
+/* 獨立編譯 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* BusyBox */
+/* BusyBox 整合後替換為 */
 #include "libbb.h"
 ```
 
-### 3.3 Replace `die_usage()` / `die_runtime()` with BusyBox helpers
+### 3.3 錯誤處理函式替換
 
 ```c
-/* standalone */
+/* 獨立編譯 */
 die_usage("message");
 die_runtime("message");
 
-/* BusyBox */
-bb_show_usage();          /* prints USAGE_lparser and exits */
+/* BusyBox 整合後替換為 */
+bb_show_usage();                   /* 輸出 USAGE_lparser 後結束 */
 bb_error_msg_and_die("message");
 ```
 
-### 3.4 `--help` / usage string
+### 3.4 說明字串格式
 
-BusyBox uses a special comment format for the usage string:
+BusyBox 使用特殊的 `//usage:` 註解格式撰寫說明字串（已在 `*_bb.c` 中完成）：
 
 ```c
 //usage:#define lparser_trivial_usage \
@@ -112,11 +114,11 @@ BusyBox uses a special comment format for the usage string:
 
 ---
 
-## 4. Register the Applet
+## 4. 向 BusyBox 建置系統註冊 Applet
 
 ### 4.1 `include/applets.h`
 
-Add one `APPLET()` line per tool (in alphabetical order):
+依字母順序加入三行 `APPLET()` 宣告：
 
 ```c
 IF_LFILTER(APPLET(lfilter, BB_DIR_USR_BIN, BB_SUID_DROP))
@@ -124,42 +126,45 @@ IF_LPARSER(APPLET(lparser, BB_DIR_USR_BIN, BB_SUID_DROP))
 IF_LSTORE( APPLET(lstore,  BB_DIR_USR_BIN, BB_SUID_DROP))
 ```
 
-### 4.2 `Config.in` (top-level)
+### 4.2 `miscutils/Config.in`
 
-Add a `config` block for each applet (e.g. under `menu "Miscellaneous"`):
+在 `miscutils/Config.in` 末尾加入三個 `config` 區塊：
 
 ```kconfig
 config LPARSER
     bool "lparser"
     default y
     help
-      lparser reads raw log lines from stdin and extracts named fields
-      using POSIX extended regular expressions, writing structured CSV
-      or JSONL output to stdout.
-
-      Part of the BusyPipe embedded ETL pipeline.
+      lparser 從 stdin 讀取原始日誌，以 POSIX 擴充正規表示式
+      擷取欄位，輸出結構化 CSV 或 JSONL。
+      BusyPipe 嵌入式 ETL 管線的一部分。
 
 config LFILTER
     bool "lfilter"
     default y
     help
-      lfilter reads CSV from stdin, filters rows by condition, projects
-      fields, and writes CSV or JSONL output to stdout.
+      lfilter 從 stdin 讀取 CSV，依條件過濾資料列、
+      投影欄位，並輸出 CSV 或 JSONL。
 
 config LSTORE
     bool "lstore"
     default y
     help
-      lstore is a file-backed key-value store with TTL support.
-      It provides put/get/delete/list/cleanup/count operations.
+      lstore 是支援 TTL 的檔案式 key-value store，
+      提供 put/get/delete/list/cleanup/count 操作。
 ```
 
 ### 4.3 `miscutils/Kbuild`
 
+加入三行目的檔規則，並設定 `-DBUSYBOX_BUILD` 停用獨立執行包裝：
+
 ```make
 lib-$(CONFIG_LPARSER) += lparser.o
+CFLAGS_lparser.o     += -DBUSYBOX_BUILD
 lib-$(CONFIG_LFILTER) += lfilter.o
+CFLAGS_lfilter.o     += -DBUSYBOX_BUILD
 lib-$(CONFIG_LSTORE)  += lstore.o
+CFLAGS_lstore.o      += -DBUSYBOX_BUILD
 ```
 
 ### 4.4 `libbb/Kbuild`
@@ -175,37 +180,38 @@ lib-y += busypipe_lib.o
 
 ---
 
-## 5. Build & Test
+## 5. 建置與驗證
 
 ```bash
-# Download BusyBox source
+# 下載並解壓縮 BusyBox 原始碼
 wget https://busybox.net/downloads/busybox-1.36.1.tar.bz2
 tar xf busybox-1.36.1.tar.bz2
 cd busybox-1.36.1
 
-# Copy adapted sources
-cp /path/to/busypipe/busybox/lparser_bb.c miscutils/lparser.c
-cp /path/to/busypipe/busybox/lfilter_bb.c miscutils/lfilter.c
-cp /path/to/busypipe/busybox/lstore_bb.c  miscutils/lstore.c
+# 複製 BusyPipe 檔案（以下路徑依實際位置調整）
+cp /path/to/busypipe/busybox/lparser_bb.c  miscutils/lparser.c
+cp /path/to/busypipe/busybox/lfilter_bb.c  miscutils/lfilter.c
+cp /path/to/busypipe/busybox/lstore_bb.c   miscutils/lstore.c
+cp /path/to/busypipe/busybox/libpipe.c     libbb/busypipe_lib.c
+cp /path/to/busypipe/busybox/libpipe.h     include/libpipe.h
 
-# Patch applets.h, Config.in, miscutils/Kbuild  (see §4)
+# 修改 include/applets.h、miscutils/Config.in、
+# miscutils/Kbuild、libbb/Kbuild（見 §4）
 
-# Configure (enable our three applets)
+# 設定並啟用三個 applet
 make defconfig
-echo "CONFIG_LPARSER=y" >> .config
-echo "CONFIG_LFILTER=y" >> .config
-echo "CONFIG_LSTORE=y"  >> .config
+printf 'CONFIG_LPARSER=y\nCONFIG_LFILTER=y\nCONFIG_LSTORE=y\n' >> .config
 make oldconfig
 
-# Build
-make -j$(nproc)
+# 編譯
+make -j"$(nproc)"
 
-# Verify
+# 驗證 --help
 ./busybox lparser --help
 ./busybox lfilter --help
 ./busybox lstore  --help
 
-# Test pipeline
+# 完整管線測試
 echo '192.168.0.2 - - [30/Apr/2026:08:00:00 +0800] "GET /index.html HTTP/1.1" 404 128' | \
   ./busybox lparser --format nginx --csv | \
   ./busybox lfilter --where 'status>=400' | \
@@ -214,21 +220,27 @@ echo '192.168.0.2 - - [30/Apr/2026:08:00:00 +0800] "GET /index.html HTTP/1.1" 40
 ./busybox lstore --db /tmp/test.tsv --list
 ```
 
+> **自動化建置**：上述步驟已封裝於 `scripts/build_busybox.sh`，
+> 搭配 Docker 可從 Windows 一鍵執行：
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File scripts\run_busybox_build.ps1
+> ```
+
 ---
 
-## 6. Toybox / GNU Interface Compatibility
+## 6. Toybox / GNU 介面相容性
 
-| Feature | BusyPipe | GNU / Toybox equivalent |
+| 功能 | BusyPipe | GNU / Toybox 等效 |
 |---|---|---|
-| Field extraction | `lparser --regex P --fields …` | `awk '{match(…)}'` |
-| Row filter | `lfilter --where 'f>=v'` | `awk -F, '$N>=v'` |
-| Field projection | `lfilter --select f1,f2` | `cut -d, -f1,2` |
-| Key-value store | `lstore --put/get/delete` | none (custom) |
-| CSV output | RFC-4180 subset | `awk/sed` pipelines |
-| JSONL output | `--format json` | `jq -R` pipelines |
+| 欄位擷取 | `lparser --regex P --fields …` | `awk '{match(…)}'` |
+| 資料列過濾 | `lfilter --where 'f>=v'` | `awk -F, '$N>=v'` |
+| 欄位投影 | `lfilter --select f1,f2` | `cut -d, -f1,2` |
+| Key-value 儲存 | `lstore --put/get/delete` | 無對應單一工具 |
+| CSV 輸出 | RFC-4180 子集 | `awk/sed` 管線 |
+| JSONL 輸出 | `--format json` | `jq -R` 管線 |
 
-CLI option style follows GNU long-option conventions (`--option value`),
-compatible with BusyBox's `getopt_ulflags()` / `opt_complementary`.
+CLI 選項風格遵循 GNU long-option 慣例（`--option value`），
+相容於 BusyBox 的 `getopt_ulflags()` / `opt_complementary`。
 
 ---
 
