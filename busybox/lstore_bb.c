@@ -41,9 +41,10 @@
 #define BB_WRITE_BUF_LINES  64
 #define BB_WRITE_BUF_BYTES  (128*1024)
 
+/* 避免與 POSIX / Windows pthread_compat.h 的 mode_t 衝突 */
 typedef enum {
     M_NONE,M_PUT,M_GET,M_DEL,M_LIST,M_CLEANUP,M_COUNT
-} mode_t;
+} store_op_t;
 
 static long now_sec(void) { return (long)time(NULL); }
 static bool expired(long e) { return e!=0 && e<=now_sec(); }
@@ -61,7 +62,7 @@ static bool parse_record(char *line, char **key, long *exp, char **val) {
 /* ── BusyBox 整合入口 ──────────────────────────────────────────── */
 int lstore_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int lstore_main(int argc, char **argv) {
-    mode_t mode=M_NONE;
+    store_op_t mode=M_NONE;
     const char *db=NULL, *key_arg=NULL;
     char key_field[128]={0};
     long ttl=0;

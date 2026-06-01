@@ -15,12 +15,9 @@ function Ensure-Built {
 
     Write-Host "Building: $($needBuild -join ', ')" -ForegroundColor Cyan
     $null = New-Item -ItemType Directory -Path "build" -Force
-    if (-not (Test-Path "build\common.o")) {
-        & gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 -c src\common.c -o build\common.o
-        if ($LASTEXITCODE -ne 0) { throw "Failed to compile common.c" }
-    }
     foreach ($name in $needBuild) {
-        & gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 "src\${name}.c" build\common.o -o "build\${name}"
+        # Compile common.c together with each tool to avoid stale cross-platform .o files.
+        & gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 "src\${name}.c" src\common.c -o "build\${name}"
         if ($LASTEXITCODE -ne 0) { throw "Failed to compile ${name}.c" }
         if (-not (Test-Path "build\${name}.exe")) { throw "build\${name}.exe not found after build" }
         Write-Host "  Built: build\${name}.exe" -ForegroundColor Green

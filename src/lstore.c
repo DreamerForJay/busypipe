@@ -35,6 +35,7 @@
 
 /* ── mode enum ───────────────────────────────────────────────────────────── */
 
+/* 避免與 POSIX / Windows pthread_compat.h 的 mode_t 衝突 */
 typedef enum {
     MODE_NONE,
     MODE_PUT,
@@ -43,12 +44,12 @@ typedef enum {
     MODE_LIST,
     MODE_CLEANUP,
     MODE_COUNT
-} mode_t;
+} store_op_t;
 
 /* ── config ───────────────────────────────────────────────────────────────── */
 
 typedef struct {
-    mode_t      mode;
+    store_op_t  mode;
     const char *db_path;
     const char *key_arg;
     char        key_field[128];
