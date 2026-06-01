@@ -285,6 +285,9 @@ printf '%s\n' \
   | ./busybox lstore  --db /tmp/ssh.tsv --put --key-field src_ip --ttl 86400
 
 ./busybox lstore --db /tmp/ssh.tsv --list
+
+# 退出
+exit
 ```
 
 整合技術細節詳見 `busybox/README-integration.md`。

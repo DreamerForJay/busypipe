@@ -123,20 +123,75 @@ if grep -q "^CONFIG_TC=y" .config; then
     echo "  [SED] CONFIG_TC=y → n（避免 kernel 6.x header 編譯錯誤）"
 fi
 
-echo "[B2] autoconf.h 中 CONFIG_LXXX（make defconfig 完成後）："
+echo "[B2] autoconf.h 中 CONFIG_LXXX（make defconfig 後，silentoldconfig 前）："
 grep -E 'CONFIG_LPARSER|CONFIG_LFILTER|CONFIG_LSTORE' include/autoconf.h 2>/dev/null \
+    | grep -v 'MAKE_SUID\|IF_NOT_\|ENABLE_' \
     || echo "  [B2-FAIL] CONFIG_LXXX 未在 autoconf.h（Kconfig 未正確寫入）"
+
+# silentoldconfig：確保 autoconf.h 在平行建置開始前已正確產生。
+# BusyBox 1.36.x confdata.c 在 #ifdef MAKE_SUID 分支產生
+#   "# define IF_LFILTER(...) __VA_ARGS__ \"CONFIG_LFILTER\""
+# 這是刻意設計（用於 SUID table），正常編譯不走此分支，完全無害。
+echo ""
+echo "=== 步驟 4b：silentoldconfig（確保 autoconf.h 正確再平行建置）==="
+make silentoldconfig
+
+echo "[B3] autoconf.h CONFIG_LXXX（silentoldconfig 後，僅顯示 #define 行）："
+grep -E '^#define CONFIG_L(PARSER|FILTER|STORE) ' include/autoconf.h 2>/dev/null \
+    || echo "  [B3-FAIL] CONFIG_LXXX #define 未在 autoconf.h"
+
+echo ""
+echo "=== 步驟 4c：序列化產生 applet_tables（消除 -j 競態）==="
+# BusyBox Kbuild.src 自己承認（第 47-53 行）：
+#   include/NUM_APPLETS.h 和 include/applet_tables.h 都由
+#   applets/applet_tables 產生。make -j 可能同時觸發兩個建置目標，
+#   第一次執行寫入 applet_tables.h(T1) 後再寫 NUM_APPLETS.h(T2)，
+#   造成 T2 > T1。make 看到此 timestamp 反轉，排程第二次執行；
+#   同時 applets/applets.c（依賴 applet_tables.h）也被排程編譯——
+#   兩個 job 同時讀/寫 applet_tables.h，導致半寫入的檔案被編譯，
+#   隨機缺失一個 applet。
+# 解法：在 -j 建置前序列化完成 applet_tables 全部相關目標。
+make applets/applet_tables
+make include/NUM_APPLETS.h include/applet_tables.h
+# applet_tables.c 固定先 rename applet_tables.h、後 rename NUM_APPLETS.h
+# （見原始碼第 239-241 行），所以每次執行後 T(NUM_APPLETS.h) > T(applet_tables.h)。
+# make -j8 看到此 timestamp 反轉，仍會排程重建 applet_tables.h，
+# 與 applets/applets.c 的編譯形成競態。
+# 修法：touch applet_tables.h 使其 timestamp > NUM_APPLETS.h，
+# 讓 make -j8 認為它已是最新，不再重建。
+touch include/applet_tables.h
+
+echo "[C1] applet_tables.h 中 lXXX 項目（序列化後）："
+grep -n '"lparser"\|"lfilter"\|"lstore"' include/applet_tables.h 2>/dev/null \
+    || echo "  [C1-FAIL] lXXX 未在 applet_tables.h——applet_tables host binary 問題"
 
 echo ""
 echo "=== 步驟 5：make -j$(nproc) ==="
-make -j"$(nproc)"
+# 以 tee 保存 make 輸出，同時顯示；失敗時輸出最後 40 行供診斷
+MAKE_LOG=$(mktemp)
+make -j"$(nproc)" 2>&1 | tee "$MAKE_LOG"; MAKE_RC=${PIPESTATUS[0]}
+if [ "$MAKE_RC" -ne 0 ]; then
+    echo "  [MAKE-FAIL] make 回傳 $MAKE_RC，最後 40 行："
+    tail -40 "$MAKE_LOG"
+    rm -f "$MAKE_LOG"
+    exit "$MAKE_RC"
+fi
+rm -f "$MAKE_LOG"
 
-# --- 6. 診斷：nm 確認 symbol ---
+# --- 6. 診斷：nm 確認 symbol（需用 unstripped binary）---
 echo ""
 echo "=== 步驟 6：nm 診斷 ==="
-nm busybox 2>/dev/null | grep -E 'lparser_main|lfilter_main|lstore_main' \
-    && echo "  [OK] lXXX_main symbols 在 binary 中" \
-    || echo "  [WARN] lXXX_main 不在 binary（compile/link 問題）"
+# BusyBox 預設 strip busybox，需用 busybox_unstripped 確認符號
+NM_TARGET="busybox_unstripped"
+[ -f "$NM_TARGET" ] || NM_TARGET="busybox"
+nm "$NM_TARGET" 2>/dev/null | grep -E 'lparser_main|lfilter_main|lstore_main' \
+    && echo "  [OK] lXXX_main symbols 在 ${NM_TARGET} 中" \
+    || echo "  [NM-WARN] lXXX_main 不在 ${NM_TARGET}（${NM_TARGET} 可能已 strip 或 compile/link 失敗）"
+
+# applet_tables.h 診斷：確認 make -j 後 lXXX 仍在排序表（偵測 race condition 回覆）
+echo "[C2] applet_tables.h 中 lXXX 項目（make -j 後）："
+grep -n '"lparser"\|"lfilter"\|"lstore"' include/applet_tables.h 2>/dev/null \
+    || echo "  [C2-FAIL] lXXX 不在 applet_tables.h（make -j 的 race condition 仍存在）"
 
 # --- 7. 複製結果並驗證 ---
 echo ""
@@ -149,11 +204,19 @@ echo ""
 echo "--- busybox --list ---"
 ./busybox --list
 
+# busybox --list 用 full_write2_str (fd 2) 輸出，不是 fd 1。
+# 在 pipe 中 dup2(1,2) 將 fd 2 重定向到 pipe，但 set -o pipefail 下
+# 若 busybox 在 grep 找到 pattern 後關閉 pipe 端時收到 SIGPIPE，
+# pipefail 會把 SIGPIPE 的非零 exit code 傳回，造成誤判。
+# 改用直接呼叫 applet --help 測試（回傳 0 = applet 存在且正常）。
 for applet in lparser lfilter lstore; do
-    if ./busybox --list | grep -q "^${applet}$"; then
+    if ./busybox "${applet}" --help > /dev/null 2>&1; then
         echo "[PASS] ${applet} 在 busybox binary 中"
     else
-        echo "[FAIL] ${applet} 未出現（見上方診斷輸出）"
+        echo "[FAIL] ${applet} 未出現或無法執行"
+        # 輔助診斷：用兩種方式確認 applet 是否在 --list
+        echo "  [DBG] --list 搜尋結果："
+        ./busybox --list 2>&1 | { grep "${applet}" || echo "  (未找到)"; }
         exit 1
     fi
 done
