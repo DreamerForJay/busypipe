@@ -50,7 +50,8 @@ if [ ! -d "$BB_DIR" ]; then
     echo "解壓縮 ${BB_TARBALL} ..."
     tar xf "$BB_TARBALL"
 else
-    echo "已存在 ${BB_DIR}，跳過下載。"
+    echo "已存在 ${BB_DIR}，跳過下載與解壓縮。"
+    echo "若需從頭重新建置，請先刪除該目錄：rm -rf ${BB_DIR}"
 fi
 
 cd "$BB_DIR"
@@ -146,7 +147,12 @@ echo ""
 echo "=== 步驟 4：設定 BusyBox 並編譯 ==="
 
 make defconfig
+# 啟用 BusyPipe applet
 printf 'CONFIG_LPARSER=y\nCONFIG_LFILTER=y\nCONFIG_LSTORE=y\n' >> .config
+# BusyBox 1.36.x 的 networking/tc.c 使用已從新版 kernel headers（6.x）移除的
+# CBQ 常數（TCA_CBQ_MAX 等），在 gcc:14 / Debian bookworm 環境下會編譯失敗。
+# 停用 tc applet 以迴避此上游相容性問題。
+printf 'CONFIG_TC=n\n' >> .config
 make oldconfig
 
 echo ""
