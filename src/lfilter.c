@@ -215,20 +215,25 @@ static void parse_args(int argc, char **argv, config_t *cfg) {
 
 /* ── comparison helper ───────────────────────────────────────────────────── */
 
-static int compare_values(op_t op, const char *left, const char *right) {
-    if (is_number_string(left) && is_number_string(right)) {
-        double a = atof(left), b = atof(right);
+/* compare_cached: right-hand side is pre-analysed at startup.
+ * rhs_is_num / rhs_double are computed once; only the left side
+ * (per-row field value) needs fresh analysis each call. */
+static int compare_cached(op_t op, const char *left,
+                           bool rhs_is_num, double rhs_double,
+                           const char *rhs_str) {
+    if (rhs_is_num && is_number_string(left)) {
+        double a = atof(left);
         switch (op) {
-            case OP_EQ: return a == b;
-            case OP_NE: return a != b;
-            case OP_GT: return a >  b;
-            case OP_GE: return a >= b;
-            case OP_LT: return a <  b;
-            case OP_LE: return a <= b;
+            case OP_EQ: return a == rhs_double;
+            case OP_NE: return a != rhs_double;
+            case OP_GT: return a >  rhs_double;
+            case OP_GE: return a >= rhs_double;
+            case OP_LT: return a <  rhs_double;
+            case OP_LE: return a <= rhs_double;
             default:    return 0;
         }
     }
-    int cmp = strcmp(left, right);
+    int cmp = strcmp(left, rhs_str);
     switch (op) {
         case OP_EQ: return cmp == 0;
         case OP_NE: return cmp != 0;
@@ -238,6 +243,24 @@ static int compare_values(op_t op, const char *left, const char *right) {
         case OP_LE: return cmp <= 0;
         default:    return 0;
     }
+}
+
+/* emit_csv_row: write selected (or all) fields as a single fwrite.
+ * Avoids per-field fputs/fputc overhead inside the hot loop. */
+static void emit_csv_row(const string_list_t *row,
+                          const int *idx, size_t n) {
+    char   buf[MAX_LINE_LEN];
+    size_t pos = 0;
+    size_t i;
+
+    for (i = 0; i < n; i++) {
+        const char *fv  = row->items[idx ? idx[i] : (int)i];
+        size_t      len = strlen(fv);
+        if (i > 0 && pos < sizeof(buf) - 1) { buf[pos++] = ','; }
+        if (pos + len < sizeof(buf) - 1) { memcpy(buf + pos, fv, len); pos += len; }
+    }
+    if (pos < sizeof(buf)) { buf[pos++] = '\n'; }
+    fwrite(buf, 1, pos, stdout);
 }
 
 /* ── JSON output helpers ──────────────────────────────────────────────────── */
@@ -369,40 +392,41 @@ int main(int argc, char **argv) {
         }
     }
 
+    /* pre-compute RHS comparison values once — avoids atof/is_number per row */
+    bool   rhs_is_num  = cfg.has_where && is_number_string(cfg.where_value);
+    double rhs_double  = rhs_is_num ? atof(cfg.where_value) : 0.0;
+
     /* process rows */
     while (fgets(line, sizeof(line), stdin) != NULL) {
         string_list_t row;
         trim_newline(line);
-        if (line[0] == '\0') continue;
+        if (line[0] == '\0') { continue; }
         if (!split_csv_inplace(line, &row)) {
             fprintf(stderr, "警告：無法解析資料列，略過：%s\n", line);
             continue;
         }
-        if (row.count != header.count) continue;
+        if (row.count != header.count) { continue; }
 
-        /* apply --where */
+        /* apply --where (uses cached RHS) */
         if (cfg.has_where &&
-            !compare_values(cfg.where_op,
-                            row.items[where_idx], cfg.where_value))
+            !compare_cached(cfg.where_op, row.items[where_idx],
+                            rhs_is_num, rhs_double, cfg.where_value)) {
             continue;
+        }
 
         /* apply --contains */
         if (cfg.has_contains &&
-            strstr(row.items[contains_idx], cfg.contains_value) == NULL)
+            strstr(row.items[contains_idx], cfg.contains_value) == NULL) {
             continue;
+        }
 
-        /* emit row */
+        /* emit row (single fwrite per row) */
         if (cfg.out_format == FMT_JSON) {
             print_json_row(&header, &row, &cfg, sel_idx);
         } else if (cfg.has_select) {
-            string_list_t out;
-            size_t i;
-            out.count = cfg.select_fields.count;
-            for (i = 0; i < cfg.select_fields.count; i++)
-                out.items[i] = row.items[sel_idx[i]];
-            print_csv_row(stdout, &out);
+            emit_csv_row(&row, sel_idx, cfg.select_fields.count);
         } else {
-            print_csv_row(stdout, &row);
+            emit_csv_row(&row, NULL, row.count);
         }
     }
 

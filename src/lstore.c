@@ -30,8 +30,13 @@
 #include <time.h>
 
 /* ── write-buffer tuneable ───────────────────────────────────────────────── */
-#define WRITE_BUF_LINES  64          /* flush every N lines */
-#define WRITE_BUF_BYTES  (128*1024)  /* or every 128 KiB    */
+/* Flush every WRITE_BUF_LINES lines as a safety checkpoint.
+ * Must be large enough that the 128 KiB stdio buffer (set via setvbuf below)
+ * can fill naturally between flushes — otherwise we generate unnecessary
+ * write() syscalls and hurt throughput.
+ * At ~108 bytes/row: 128 KiB / 108 ≈ 1185 rows per natural flush.
+ * Setting 4096 means ~3-4 natural flushes between each manual checkpoint. */
+#define WRITE_BUF_LINES  4096        /* safety checkpoint every N lines */
 
 /* ── mode enum ───────────────────────────────────────────────────────────── */
 
@@ -173,6 +178,30 @@ static void copy_file(const char *src, const char *dst) {
     fclose(out);
 }
 
+/* Extract the Nth comma-delimited field from a CSV line without tokenizing
+ * the whole row.  Avoids strncpy(4096) + full split when only one field is
+ * needed (e.g. the key field in --put mode). */
+static bool extract_nth_field(const char *line, int n,
+                               char *out, size_t out_sz) {
+    const char *p = line;
+    int col = 0;
+
+    while (col < n) {
+        while (*p && *p != ',' && *p != '\n') { p++; }
+        if (*p != ',') { return false; }
+        p++; col++;
+    }
+    /* p is at the start of field n */
+    const char *s = p;
+    while (*p && *p != ',' && *p != '\n') { p++; }
+    size_t len = (size_t)(p - s);
+    if (len == 0) { return false; }
+    if (len >= out_sz) { len = out_sz - 1; }
+    memcpy(out, s, len);
+    out[len] = '\0';
+    return true;
+}
+
 static void atomic_replace(const char *tmp_path, const char *final_path) {
     if (rename(tmp_path, final_path) == 0) return;
     /* fallback for cross-device rename */
@@ -242,7 +271,6 @@ static void put_rows(const config_t *cfg) {
     long          expires_at = 0;
     unsigned long written = 0, skipped = 0;
     unsigned long buf_lines = 0;
-    size_t        buf_bytes = 0;
 
     if (fgets(header_buf, sizeof(header_buf), stdin) == NULL) return;
     trim_newline(header_buf);
@@ -264,36 +292,29 @@ static void put_rows(const config_t *cfg) {
         expires_at = now_epoch() + cfg->ttl_seconds;
 
     db = open_db_append(cfg->db_path);
+    /* large stdio buffer → fewer write() syscalls (≈39 for 50 k rows vs 781) */
+    setvbuf(db, NULL, _IOFBF, 1 << 17);
 
     while (fgets(line, sizeof(line), stdin) != NULL) {
-        char          row_buf[MAX_LINE_LEN];
-        string_list_t row;
-        int           n;
+        char key[256];
 
         trim_newline(line);
-        if (line[0] == '\0') continue;
+        if (line[0] == '\0') { continue; }
 
-        strncpy(row_buf, line, sizeof(row_buf) - 1);
-        row_buf[sizeof(row_buf) - 1] = '\0';
-
-        if (!split_csv_inplace(row_buf, &row) || row.count != header.count) {
+        /* extract only the key field — no strncpy(4096) + full split */
+        if (!extract_nth_field(line, key_index, key, sizeof(key))) {
             skipped++;
             continue;
         }
 
-        n = fprintf(db, "%s\t%ld\t%s\n",
-                    row.items[key_index], expires_at, line);
-        if (n > 0) {
-            written++;
-            buf_lines++;
-            buf_bytes += (size_t)n;
-        }
+        fprintf(db, "%s\t%ld\t%s\n", key, expires_at, line);
+        written++;
+        buf_lines++;
 
-        /* buffered flush */
-        if (buf_lines >= WRITE_BUF_LINES || buf_bytes >= WRITE_BUF_BYTES) {
+        /* periodic safety flush (large threshold avoids excessive syscalls) */
+        if (buf_lines >= WRITE_BUF_LINES) {
             fflush(db);
             buf_lines = 0;
-            buf_bytes = 0;
         }
     }
 
