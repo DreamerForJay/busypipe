@@ -15,8 +15,7 @@
 //config:	bool "lparser"
 //config:	default y
 //config:	help
-//config:	  Log parser applet. Part of BusyPipe embedded ETL pipeline.
-//config:	  Parses raw log lines (nginx/apache/auth) into CSV or JSONL.
+//config:	  BusyPipe log parser (nginx/apache/auth/custom regex).
 
 //usage:#define lparser_trivial_usage "--regex PATTERN --fields f1,f2[,...] [--csv|--json] [--stats]"
 //usage:    "  or: --format nginx|apache|auth [--csv|--json] [--stats]"

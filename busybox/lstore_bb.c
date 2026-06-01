@@ -14,8 +14,7 @@
 //config:	bool "lstore"
 //config:	default y
 //config:	help
-//config:	  File-backed key-value store applet. Part of BusyPipe embedded ETL pipeline.
-//config:	  Supports put/get/delete/list/cleanup/count with TTL.
+//config:	  BusyPipe key-value store with TTL (put/get/delete/list).
 
 //usage:#define lstore_trivial_usage "--db PATH --put --key-field F [--ttl SEC] | --get KEY | --delete KEY | --list | --cleanup | --count"
 //usage:#define lstore_full_usage "\n\n"

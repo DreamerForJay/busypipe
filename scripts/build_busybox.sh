@@ -94,12 +94,16 @@ if ! grep -q "busypipe_lib" libbb/Kbuild; then
 fi
 
 echo "--- 診斷：gen_build_files.sh 後的結果 ---"
-echo "[applets.h] LPARSER 項目："
-grep -n "LPARSER\|LFILTER\|LSTORE" include/applets.src.h || echo "  (未找到，directive 可能未被處理)"
+echo "[applets.h] IF_LPARSER 項目："
+grep -n "IF_LPARSER\|IF_LFILTER\|IF_LSTORE" include/applets.h 2>/dev/null \
+    || grep -n "LPARSER\|LFILTER\|LSTORE" include/applets.src.h 2>/dev/null \
+    || echo "  (未找到)"
 echo "[Config.in] LPARSER 項目："
 grep -n "LPARSER\|LFILTER\|LSTORE" miscutils/Config.in || echo "  (未找到)"
 echo "[Kbuild] LPARSER 項目："
 grep -n "LPARSER\|LFILTER\|LSTORE" miscutils/Kbuild || echo "  (未找到)"
+echo "[Config.in] 行 595-610（診斷 Overlong line 位置）："
+sed -n '595,610p' miscutils/Config.in | cat -A
 
 # --- 4. 設定並編譯 ---
 echo ""

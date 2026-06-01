@@ -14,8 +14,7 @@
 //config:	bool "lfilter"
 //config:	default y
 //config:	help
-//config:	  CSV stream filter applet. Part of BusyPipe embedded ETL pipeline.
-//config:	  Filters rows by condition, projects fields, outputs CSV or JSONL.
+//config:	  BusyPipe CSV stream filter (--where/--select/--contains).
 
 //usage:#define lfilter_trivial_usage "[--where expr] [--select f1,f2,...] [--contains f=sub] [--format csv|json]"
 //usage:#define lfilter_full_usage "\n\n"
