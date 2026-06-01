@@ -245,17 +245,49 @@ bash scripts/test_bb_applets.sh
 
 ### 第三層：完整 BusyBox 整合
 
-驗證三個 applet 真正編譯進 `busybox` multi-call binary。
-**需要下載 BusyBox 1.36.1 原始碼並執行整合步驟。**
+驗證三個 applet 真正編譯進 `busybox` multi-call binary（已驗證通過）。
+
+**一鍵建置（Windows，需要 Docker）：**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_busybox_build.ps1
+```
+
+**手動測試（建置完成後）：**
+
+```powershell
+# 進入 Docker shell 互動測試
+docker run --rm -it -v "${PWD}:/work" -w /work/busybox-1.36.1 gcc:14 bash
+```
 
 ```bash
-# 參見 busybox/README-integration.md §5 的完整步驟
-./busybox lparser --format nginx --csv < samples/access.log | \
-  ./busybox lfilter --where 'status>=400' | \
-  ./busybox lstore  --db /tmp/errors.tsv --put --key-field ip --ttl 3600
+# 在容器內執行（或用下方一次性指令）
+
+# 確認三個 applet 存在
+./busybox --list | grep -E 'lparser|lfilter|lstore'
+
+# --help 驗證
+./busybox lparser --help
+
+# Pipeline 1：access.log HTTP 錯誤分析
+printf '%s\n' \
+  '1.2.3.4 - - [01/Jun/2026:12:00:00 +0800] "GET /admin HTTP/1.1" 404 128' \
+  '5.6.7.8 - - [01/Jun/2026:12:00:01 +0800] "POST /login HTTP/1.1" 500 64' \
+  | ./busybox lparser --format nginx --csv \
+  | ./busybox lfilter --where 'status>=400' \
+  | ./busybox lstore  --db /tmp/errors.tsv --put --key-field ip --ttl 3600
 
 ./busybox lstore --db /tmp/errors.tsv --list
+
+# Pipeline 2：auth.log SSH 失敗登入（使用專案 samples）
+./busybox lparser --format auth --csv < /work/samples/auth.log \
+  | ./busybox lfilter --contains 'result=Failed' \
+  | ./busybox lstore  --db /tmp/ssh.tsv --put --key-field src_ip --ttl 86400
+
+./busybox lstore --db /tmp/ssh.tsv --list
 ```
+
+整合技術細節詳見 `busybox/README-integration.md`。
 
 ---
 

@@ -123,15 +123,23 @@
 > docker run --rm -v "${PWD}:/work" -w /work gcc:14 sh scripts/test_bb_applets.sh
 > ```
 
-### 第三層：完整 BusyBox 整合
+### 第三層：完整 BusyBox 整合（✅ 已驗證通過）
 
-| 步驟 | 說明 |
+| 指令 | 說明 |
 |------|------|
-| 下載 BusyBox 1.36.1 原始碼 | 詳見 `busybox/README-integration.md` |
-| 複製 applet + 函式庫檔案 | §2 Files to Add |
-| 修改 applets.h / Config.in / Kbuild | §4 Register the Applet |
-| `make defconfig && make -j$(nproc)` | §5 Build & Test |
-| `./busybox lparser \| lfilter \| lstore` | 完整管線驗證 |
+| `powershell scripts\run_busybox_build.ps1` | 一鍵建置（Windows Docker）|
+| `bash scripts/build_busybox.sh` | 一鍵建置（Linux）|
+| `./busybox --list \| grep -E 'lparser\|lfilter\|lstore'` | 確認三個 applet 存在 |
+| `./busybox lparser --format nginx --csv \| lfilter \| lstore` | 完整管線驗證 |
+
+**已驗證功能：**
+- `[PASS] lparser 在 busybox binary 中`
+- `[PASS] lfilter 在 busybox binary 中`
+- `[PASS] lstore 在 busybox binary 中`
+- 完整 access.log + auth.log 雙管線
+- `./busybox lparser --help` 輸出正確說明
+
+詳見 `busybox/README-integration.md` 與 `docs/troubleshooting.md`。
 
 ---
 
