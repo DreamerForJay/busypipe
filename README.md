@@ -179,6 +179,86 @@ bash scripts/demo_auth.sh
 
 ---
 
+## 全面驗證指南
+
+BusyPipe 的驗證分為三個層次，由淺至深：
+
+### 第一層：獨立工具（standalone）
+
+| 指令 | 說明 | 環境 |
+|------|------|------|
+| `make test` | 6 個 smoke test（解析、過濾、儲存管線）| Linux / Docker |
+| `bash scripts/linux_pipeline_demo.sh` | access.log + auth.log 雙管線視覺化展示 | Linux / Docker |
+| `bash scripts/demo_auth.sh` | auth.log SSH 失敗登入分析展示 | Linux / Docker |
+| `bash scripts/benchmark.sh` | BusyPipe vs GNU awk 吞吐量比較 | Linux / Docker |
+| `powershell scripts\test_store.ps1` | lstore CRUD 回歸測試 | Windows |
+| `powershell scripts\demo.ps1` | lfilter / lstore 視覺化展示 | Windows |
+
+### 第二層：BusyBox Applet 適配版
+
+驗證 `libpipe.c`（共用函式庫）與各 `*_bb.c` 的整合。
+**不需要 BusyBox 原始碼**，直接以 gcc 獨立編譯後執行。
+
+```bash
+# 一鍵執行（包含編譯 + 功能 + 一致性驗證，共 22 項）
+make test-bb
+
+# 或直接執行腳本
+bash scripts/test_bb_applets.sh
+```
+
+`test_bb_applets.sh` 涵蓋的驗證項目：
+
+| 驗證類別 | 項目 |
+|---------|------|
+| 編譯 | `libpipe.c` 獨立編譯為目的檔 `.o` |
+| 編譯 | `lparser_bb.c` 連結 `libpipe.o` 成功 |
+| 編譯 | `lfilter_bb.c` 連結 `libpipe.o` 成功 |
+| 編譯 | `lstore_bb.c` 連結 `libpipe.o` 成功 |
+| lparser_main | `--format nginx/auth` CSV header 正確 |
+| lparser_main | `--json` 輸出格式正確 |
+| lparser_main | `--stats` 輸出至 stderr |
+| lparser_main | `--regex + --fields` 自訂解析正確 |
+| lfilter_main | `--where` 數值比較過濾正確 |
+| lfilter_main | `--select` 欄位投影正確 |
+| lfilter_main | `--format json` 輸出正確 |
+| lfilter_main | `--contains` 子字串過濾正確 |
+| lfilter_main | `--where + --select` 組合使用正確 |
+| lstore_main | `--put` 寫入資料 |
+| lstore_main | `--list` 列出有效記錄 |
+| lstore_main | `--count` 計算有效筆數 |
+| lstore_main | `--get` 查詢特定 key |
+| lstore_main | `--cleanup` 清除過期記錄 |
+| lstore_main | `--delete` 刪除指定 key |
+| 完整管線 | access.log 錯誤管線（三工具串接）|
+| 完整管線 | auth.log SSH 失敗登入管線 |
+| 一致性 | applet 版輸出與 standalone 版本完全相同 |
+
+> 透過 Docker 執行（Windows 環境）：
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File scripts\run_linux_demo.ps1
+> ```
+> 或直接：
+> ```powershell
+> docker run --rm -v "${PWD}:/work" -w /work gcc:14 sh scripts/test_bb_applets.sh
+> ```
+
+### 第三層：完整 BusyBox 整合
+
+驗證三個 applet 真正編譯進 `busybox` multi-call binary。
+**需要下載 BusyBox 1.36.1 原始碼並執行整合步驟。**
+
+```bash
+# 參見 busybox/README-integration.md §5 的完整步驟
+./busybox lparser --format nginx --csv < samples/access.log | \
+  ./busybox lfilter --where 'status>=400' | \
+  ./busybox lstore  --db /tmp/errors.tsv --put --key-field ip --ttl 3600
+
+./busybox lstore --db /tmp/errors.tsv --list
+```
+
+---
+
 ## 專案結構
 
 ```text

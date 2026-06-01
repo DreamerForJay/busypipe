@@ -89,26 +89,49 @@
 
 ---
 
-## 3. 可展示成果
+## 3. 全面驗證流程
 
-### Linux / Docker
+### 第一層：獨立工具（standalone）
 
-| 展示項目 | 命令 |
-|--------|------|
-| 完整雙管線 | `bash scripts/linux_pipeline_demo.sh` |
-| auth.log 分析 | `bash scripts/demo_auth.sh` |
-| Benchmark | `make bench` 或 `bash scripts/benchmark.sh` |
-| Smoke tests | `make test` |
-| --help 說明 | `./build/lparser --help` |
-| Man page | `man docs/man/lparser.1` |
+| 指令 | 說明 | 環境 |
+|------|------|------|
+| `make test` | 6 個 smoke test | Linux / Docker |
+| `bash scripts/linux_pipeline_demo.sh` | access.log + auth.log 雙管線展示 | Linux / Docker |
+| `bash scripts/demo_auth.sh` | auth.log SSH 失敗登入分析 | Linux / Docker |
+| `make bench` | BusyPipe vs GNU awk 效能比較 | Linux / Docker |
+| `powershell scripts\test_store.ps1` | lstore CRUD 回歸測試 | Windows |
+| `powershell scripts\demo.ps1` | lfilter / lstore 展示 | Windows |
 
-### Windows 本機
+### 第二層：BusyBox Applet 適配版
 
-| 展示項目 | 命令 |
-|--------|------|
-| lfilter Demo | `.\scripts\demo.ps1` |
-| lstore 測試 | `.\scripts\test_store.ps1` |
-| Docker 完整 Demo | `.\scripts\run_linux_demo.ps1` |
+驗證 `libpipe.c`（共用函式庫）與各 `*_bb.c` 的整合，**不需要 BusyBox 原始碼**。
+
+| 指令 | 說明 |
+|------|------|
+| `make test-bb` | 完整 22 項驗證（編譯 + 功能 + 一致性）|
+| `bash scripts/test_bb_applets.sh` | 同上，直接執行腳本 |
+
+驗證項目涵蓋：
+- `libpipe.c` 獨立編譯為目的檔
+- 三個 `*_bb.c` 連結 `libpipe.o` 成功
+- `lparser_main / lfilter_main / lstore_main` 功能正確（各 CLI 選項）
+- 完整管線（access.log + auth.log）
+- applet 版輸出與 standalone 版本完全相同
+
+> Windows 使用者：
+> ```powershell
+> docker run --rm -v "${PWD}:/work" -w /work gcc:14 sh scripts/test_bb_applets.sh
+> ```
+
+### 第三層：完整 BusyBox 整合
+
+| 步驟 | 說明 |
+|------|------|
+| 下載 BusyBox 1.36.1 原始碼 | 詳見 `busybox/README-integration.md` |
+| 複製 applet + 函式庫檔案 | §2 Files to Add |
+| 修改 applets.h / Config.in / Kbuild | §4 Register the Applet |
+| `make defconfig && make -j$(nproc)` | §5 Build & Test |
+| `./busybox lparser \| lfilter \| lstore` | 完整管線驗證 |
 
 ---
 
