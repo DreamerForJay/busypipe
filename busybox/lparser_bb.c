@@ -54,14 +54,105 @@ static const bp_format_t BP_FORMATS[] = {
     { NULL, NULL, NULL }
 };
 
+/* ── fast-path parsers (bypass regexec for built-in formats) ─────── */
+typedef enum { FAST_NONE = 0, FAST_NGINX, FAST_AUTH } bp_fast_fmt_t;
+
+static bool bp_parse_nginx_fast(const char *line, regmatch_t *m) {
+    const char *p = line, *s;
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[1].rm_so = (int)(s-line); m[1].rm_eo = (int)(p-line);
+    while (*p && *p != '[') { p++; }
+    if (!*p) { return false; }
+    p++;
+    s = p;
+    while (*p && *p != ']') { p++; }
+    if (!*p) { return false; }
+    m[2].rm_so = (int)(s-line); m[2].rm_eo = (int)(p-line);
+    p++;
+    if (*p == ' ') { p++; }
+    if (*p != '"') { return false; }
+    p++;
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[3].rm_so = (int)(s-line); m[3].rm_eo = (int)(p-line); p++;
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[4].rm_so = (int)(s-line); m[4].rm_eo = (int)(p-line);
+    while (*p && *p != '"') { p++; }
+    if (!*p) { return false; }
+    p++; if (*p == ' ') { p++; }
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[5].rm_so = (int)(s-line); m[5].rm_eo = (int)(p-line); p++;
+    s = p;
+    while (*p && *p != ' ' && *p != '\n' && *p != '\r') { p++; }
+    m[6].rm_so = (int)(s-line); m[6].rm_eo = (int)(p-line);
+    return m[6].rm_so < m[6].rm_eo;
+}
+
+static const char *bp_next_tok(const char *p) {
+    while (*p && *p != ' ') { p++; }
+    if (*p == ' ') { p++; }
+    return p;
+}
+
+static bool bp_parse_auth_fast(const char *line, regmatch_t *m) {
+    const char *p = line, *s;
+    int i;
+    s = p;
+    for (i = 0; i < 3; i++) {
+        while (*p && *p != ' ') { p++; }
+        if (!*p) { return false; }
+        if (i < 2) { p++; }
+    }
+    m[1].rm_so = (int)(s-line); m[1].rm_eo = (int)(p-line);
+    if (*p == ' ') { p++; }
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[2].rm_so = (int)(s-line); m[2].rm_eo = (int)(p-line); p++;
+    if (strncmp(p, "sshd[", 5) != 0) { return false; }
+    p = bp_next_tok(p);
+    if (!*p) { return false; }
+    if (strncmp(p,"Failed",6)!=0 && strncmp(p,"Accepted",8)!=0) { return false; }
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[3].rm_so = (int)(s-line); m[3].rm_eo = (int)(p-line); p++;
+    p = bp_next_tok(p); p = bp_next_tok(p); /* password for */
+    if (!*p) { return false; }
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[4].rm_so = (int)(s-line); m[4].rm_eo = (int)(p-line); p++;
+    p = bp_next_tok(p); /* from */
+    if (!*p) { return false; }
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[5].rm_so = (int)(s-line); m[5].rm_eo = (int)(p-line); p++;
+    p = bp_next_tok(p); /* port */
+    if (!*p) { return false; }
+    s = p;
+    while (*p && *p != ' ' && *p != '\n' && *p != '\r') { p++; }
+    m[6].rm_so = (int)(s-line); m[6].rm_eo = (int)(p-line);
+    return m[6].rm_so < m[6].rm_eo;
+}
+
 /* ── BusyBox 整合入口 ──────────────────────────────────────────── */
 int lparser_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int lparser_main(int argc, char **argv) {
-    const char *regex_pat = NULL;
-    char fields_buf[1024] = {0};
-    bp_list_t fields;
-    bool use_json = false;
-    bool stats    = false;
+    const char   *regex_pat = NULL;
+    char          fields_buf[1024] = {0};
+    bp_list_t     fields;
+    bool          use_json  = false;
+    bool          stats     = false;
+    bp_fast_fmt_t fast_fmt  = FAST_NONE;
     int i;
 
     for (i = 1; i < argc; i++) {
@@ -75,6 +166,10 @@ int lparser_main(int argc, char **argv) {
                 if (!strcmp(f->name, argv[i])) {
                     regex_pat = f->regex;
                     strncpy(fields_buf, f->fields, sizeof(fields_buf)-1);
+                    if (!strcmp(f->name,"nginx") || !strcmp(f->name,"apache"))
+                        fast_fmt = FAST_NGINX;
+                    else if (!strcmp(f->name,"auth"))
+                        fast_fmt = FAST_AUTH;
                     break;
                 }
             }
@@ -83,11 +178,10 @@ int lparser_main(int argc, char **argv) {
                 return 1;
             }
         }
-        else if (!strcmp(argv[i],"--json"))  use_json = true;
-        else if (!strcmp(argv[i],"--csv"))   use_json = false;
-        else if (!strcmp(argv[i],"--stats")) stats = true;
+        else if (!strcmp(argv[i],"--json"))  { use_json = true; }
+        else if (!strcmp(argv[i],"--csv"))   { use_json = false; }
+        else if (!strcmp(argv[i],"--stats")) { stats = true; }
         else if (!strcmp(argv[i],"--help") || !strcmp(argv[i],"-h")) {
-            /* In BusyBox: bb_show_usage() */
             fprintf(stderr,
                 "用法：lparser --regex PATTERN --fields f1,f2 [--csv|--json]\n"
                 "      lparser --format nginx|apache|auth [--csv|--json]\n");
@@ -116,32 +210,49 @@ int lparser_main(int argc, char **argv) {
         fprintf(stderr, "lparser: invalid regex\n"); return 1;
     }
 
-    if (!use_json) bp_print_csv(stdout, &fields);
+    setvbuf(stdin,  NULL, _IOFBF, 1 << 17);
+    setvbuf(stdout, NULL, _IOFBF, 1 << 17);
+
+    if (!use_json) { bp_print_csv(stdout, &fields); }
 
     while (fgets(line, sizeof(line), stdin)) {
-        bp_trim_newline(line);
-        if (regexec(&re, line, fields.count+1, m, 0) != 0) { skipped++; continue; }
+        bool ok;
+        if (fast_fmt == FAST_NGINX) {
+            ok = bp_parse_nginx_fast(line, m);
+        } else if (fast_fmt == FAST_AUTH) {
+            ok = bp_parse_auth_fast(line, m);
+        } else {
+            bp_trim_newline(line);
+            ok = (regexec(&re, line, fields.count+1, m, 0) == 0);
+        }
+        if (!ok) { skipped++; continue; }
         matched++;
         if (!use_json) {
-            size_t j;
+            char   buf[BP_MAX_LINE_LEN];
+            size_t pos = 0, j;
             for (j = 0; j < fields.count; j++) {
-                if (j) putchar(',');
-                fwrite(line + m[j+1].rm_so, 1,
-                       (size_t)(m[j+1].rm_eo - m[j+1].rm_so), stdout);
+                int    s   = m[j+1].rm_so;
+                int    e   = m[j+1].rm_eo;
+                size_t len = (size_t)(e - s);
+                if (j > 0 && pos < sizeof(buf)-1) { buf[pos++] = ','; }
+                if (pos + len < sizeof(buf)-1) {
+                    memcpy(buf+pos, line+s, len); pos += len;
+                }
             }
-            putchar('\n');
+            if (pos < sizeof(buf)) { buf[pos++] = '\n'; }
+            fwrite(buf, 1, pos, stdout);
         } else {
             size_t j;
             putchar('{');
             for (j = 0; j < fields.count; j++) {
                 size_t len = (size_t)(m[j+1].rm_eo - m[j+1].rm_so);
                 char val[BP_MAX_LINE_LEN];
-                if (len >= sizeof(val)) len = sizeof(val) - 1;
+                if (len >= sizeof(val)) { len = sizeof(val) - 1; }
                 memcpy(val, line + m[j+1].rm_so, len);
                 val[len] = '\0';
-                if (j) putchar(',');
+                if (j) { putchar(','); }
                 printf("\"%s\":\"", fields.items[j]);
-                bp_json_escape(val);   /* was: raw fwrite, no escaping */
+                bp_json_escape(val);
                 putchar('"');
             }
             puts("}");

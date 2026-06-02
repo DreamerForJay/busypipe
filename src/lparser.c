@@ -60,12 +60,14 @@ static const builtin_format_t BUILTIN_FORMATS[] = {
 /* ── config ───────────────────────────────────────────────────────────────── */
 
 typedef enum { OUTPUT_CSV, OUTPUT_JSON } output_format_t;
+typedef enum { FAST_NONE = 0, FAST_NGINX, FAST_AUTH } fast_fmt_t;
 
 typedef struct {
     const char      *regex_pattern;
     char             fields_buffer[1024];
     string_list_t    fields;
     output_format_t  format;
+    fast_fmt_t       fast_fmt;
     bool             stats;
 } config_t;
 
@@ -118,6 +120,189 @@ static void print_help(void) {
 
 #ifndef _WIN32
 
+/* ── fast-path parsers (bypass regexec for built-in formats) ─────────────── */
+
+/* nginx/apache: parse access log line into 6 capture groups.
+ * Groups: ip, time (inside []), method, path, status, bytes */
+static bool parse_nginx_fast(const char *line, regmatch_t *m) {
+    const char *p = line, *s;
+
+    /* group 1: ip (up to first space) */
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[1].rm_so = (int)(s - line);
+    m[1].rm_eo = (int)(p - line);
+
+    /* skip to '[' */
+    while (*p && *p != '[') { p++; }
+    if (!*p) { return false; }
+    p++; /* skip '[' */
+
+    /* group 2: time (up to ']') */
+    s = p;
+    while (*p && *p != ']') { p++; }
+    if (!*p) { return false; }
+    m[2].rm_so = (int)(s - line);
+    m[2].rm_eo = (int)(p - line);
+    p++; /* skip ']' */
+
+    /* skip ' "' */
+    if (*p == ' ') { p++; }
+    if (*p != '"') { return false; }
+    p++; /* skip '"' */
+
+    /* group 3: method (up to space) */
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[3].rm_so = (int)(s - line);
+    m[3].rm_eo = (int)(p - line);
+    p++;
+
+    /* group 4: path (up to space) */
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[4].rm_so = (int)(s - line);
+    m[4].rm_eo = (int)(p - line);
+
+    /* skip to closing '"' */
+    while (*p && *p != '"') { p++; }
+    if (!*p) { return false; }
+    p++; /* skip '"' */
+    if (*p == ' ') { p++; }
+
+    /* group 5: status (up to space) */
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[5].rm_so = (int)(s - line);
+    m[5].rm_eo = (int)(p - line);
+    p++;
+
+    /* group 6: bytes (up to space/newline) */
+    s = p;
+    while (*p && *p != ' ' && *p != '\n' && *p != '\r') { p++; }
+    m[6].rm_so = (int)(s - line);
+    m[6].rm_eo = (int)(p - line);
+
+    return m[6].rm_so < m[6].rm_eo;
+}
+
+/* Advance p past the current space-delimited token and its trailing space. */
+static const char *next_token(const char *p) {
+    while (*p && *p != ' ') { p++; }
+    if (*p == ' ') { p++; }
+    return p;
+}
+
+/* auth: parse sshd password event into 6 capture groups.
+ * Groups: time (3 tokens), host, result, user, src_ip, port */
+static bool parse_auth_fast(const char *line, regmatch_t *m) {
+    const char *p = line, *s;
+    int i;
+
+    /* group 1: time — first 3 space-separated tokens */
+    s = p;
+    for (i = 0; i < 3; i++) {
+        while (*p && *p != ' ') { p++; }
+        if (!*p) { return false; }
+        if (i < 2) { p++; } /* skip space between tokens */
+    }
+    m[1].rm_so = (int)(s - line);
+    m[1].rm_eo = (int)(p - line);
+    if (*p == ' ') { p++; }
+
+    /* group 2: host */
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[2].rm_so = (int)(s - line);
+    m[2].rm_eo = (int)(p - line);
+    p++;
+
+    /* skip sshd[PID]: */
+    if (strncmp(p, "sshd[", 5) != 0) { return false; }
+    p = next_token(p);
+    if (!*p) { return false; }
+
+    /* group 3: result (Failed or Accepted) */
+    if (strncmp(p, "Failed", 6) != 0 && strncmp(p, "Accepted", 8) != 0) {
+        return false;
+    }
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[3].rm_so = (int)(s - line);
+    m[3].rm_eo = (int)(p - line);
+    p++;
+
+    /* skip "password for" */
+    p = next_token(p); /* password */
+    p = next_token(p); /* for */
+    if (!*p) { return false; }
+
+    /* group 4: user */
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[4].rm_so = (int)(s - line);
+    m[4].rm_eo = (int)(p - line);
+    p++;
+
+    /* skip "from" */
+    p = next_token(p);
+    if (!*p) { return false; }
+
+    /* group 5: src_ip */
+    s = p;
+    while (*p && *p != ' ') { p++; }
+    if (!*p) { return false; }
+    m[5].rm_so = (int)(s - line);
+    m[5].rm_eo = (int)(p - line);
+    p++;
+
+    /* skip "port" */
+    p = next_token(p);
+    if (!*p) { return false; }
+
+    /* group 6: port number */
+    s = p;
+    while (*p && *p != ' ' && *p != '\n' && *p != '\r') { p++; }
+    m[6].rm_so = (int)(s - line);
+    m[6].rm_eo = (int)(p - line);
+
+    return m[6].rm_so < m[6].rm_eo;
+}
+
+/* write CSV match as a single fwrite (faster than per-field putchar/fwrite) */
+static void print_csv_match_buf(const config_t *cfg,
+                                 const regmatch_t *m,
+                                 const char *line) {
+    char   buf[MAX_LINE_LEN];
+    size_t pos = 0;
+    size_t i;
+
+    for (i = 0; i < cfg->fields.count; i++) {
+        int    s   = m[i + 1].rm_so;
+        int    e   = m[i + 1].rm_eo;
+        size_t len = (size_t)(e - s);
+
+        if (i > 0 && pos < sizeof(buf) - 1)
+            buf[pos++] = ',';
+
+        if (pos + len < sizeof(buf) - 1) {
+            memcpy(buf + pos, line + s, len);
+            pos += len;
+        }
+    }
+    if (pos < sizeof(buf))
+        buf[pos++] = '\n';
+
+    fwrite(buf, 1, pos, stdout);
+}
+
 static void print_json_escaped(const char *text) {
     while (*text != '\0') {
         unsigned char c = (unsigned char)*text;
@@ -162,19 +347,6 @@ static void print_json_object(const config_t *cfg,
     puts("}");
 }
 
-static void print_csv_match(const config_t *cfg,
-                             regmatch_t *matches,
-                             const char *line) {
-    size_t i;
-    for (i = 0; i < cfg->fields.count; i++) {
-        int start = matches[i + 1].rm_so;
-        int end   = matches[i + 1].rm_eo;
-        if (i > 0) putchar(',');
-        fwrite(line + start, 1, (size_t)(end - start), stdout);
-    }
-    putchar('\n');
-}
-
 static void parse_args(int argc, char **argv, config_t *cfg) {
     int i;
     const char *format_name = NULL;
@@ -212,6 +384,12 @@ static void parse_args(int argc, char **argv, config_t *cfg) {
                 cfg->regex_pattern = f->regex;
                 strncpy(cfg->fields_buffer, f->fields,
                         sizeof(cfg->fields_buffer) - 1);
+                /* select fast-path parser for known formats */
+                if (strcmp(f->name, "nginx") == 0 ||
+                    strcmp(f->name, "apache") == 0)
+                    cfg->fast_fmt = FAST_NGINX;
+                else if (strcmp(f->name, "auth") == 0)
+                    cfg->fast_fmt = FAST_AUTH;
                 break;
             }
         }
@@ -264,6 +442,10 @@ int main(int argc, char **argv) {
 
     parse_args(argc, argv, &cfg);
 
+    /* larger I/O buffers reduce syscall overhead */
+    setvbuf(stdin,  NULL, _IOFBF, 1 << 17);
+    setvbuf(stdout, NULL, _IOFBF, 1 << 17);
+
     rc = regcomp(&regex, cfg.regex_pattern, REG_EXTENDED);
     if (rc != 0) {
         char errbuf[256];
@@ -277,15 +459,22 @@ int main(int argc, char **argv) {
     }
 
     while (fgets(line, sizeof(line), stdin) != NULL) {
-        trim_newline(line);
-        rc = regexec(&regex, line, cfg.fields.count + 1, matches, 0);
-        if (rc != 0) {
-            skipped++;
-            continue;
+        bool ok;
+
+        if (cfg.fast_fmt == FAST_NGINX) {
+            ok = parse_nginx_fast(line, matches);
+        } else if (cfg.fast_fmt == FAST_AUTH) {
+            ok = parse_auth_fast(line, matches);
+        } else {
+            trim_newline(line);
+            ok = (regexec(&regex, line, cfg.fields.count + 1, matches, 0) == 0);
         }
+
+        if (!ok) { skipped++; continue; }
         matched++;
+
         if (cfg.format == OUTPUT_CSV) {
-            print_csv_match(&cfg, matches, line);
+            print_csv_match_buf(&cfg, matches, line);
         } else {
             print_json_object(&cfg, matches, line);
         }

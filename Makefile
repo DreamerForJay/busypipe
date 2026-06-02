@@ -1,5 +1,5 @@
 CC      ?= gcc
-CFLAGS  ?= -Wall -Wextra -Werror -std=c11 -O2
+CFLAGS  ?= -Wall -Wextra -Werror -std=c11 -O3
 CPPFLAGS?= -Iinclude
 LDFLAGS ?=
 

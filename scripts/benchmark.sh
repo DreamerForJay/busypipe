@@ -104,7 +104,7 @@ PYEOF
 
 REGEX='^([^ ]+) .* \[([^]]+)\] "([^ ]+) ([^ ]+) [^"]*" ([0-9]{3}) ([0-9]+)'
 FIELDS='ip,time,method,path,status,bytes'
-"$BUILD/lparser" --regex "$REGEX" --fields "$FIELDS" --csv \
+"$BUILD/lparser" --format nginx --csv \
     < "$LOGFILE" > "$CSVFILE"
 
 CSVLINES=$(( $(wc -l < "$CSVFILE") - 1 ))
@@ -118,14 +118,13 @@ printf "  BusyPipe Benchmark  (N=%d, repeat=%d)\n" "$NLINES" "$REPEAT"
 echo "============================================================"
 
 # ── 1. Field extraction ────────────────────────────────────────────────────────
-hdr "1. Field extraction  (lparser vs awk)"
+hdr "1. Field extraction  (lparser --format nginx vs awk)"
 
-# GNU awk equivalent: use $1 $7 $8 $9 field positions in access.log
-# Field positions: 1=ip 4=time(no[) 7=method 8=path 9=status 10=bytes
-# After parsing: ip=$1, time=substr($4,2), method=substr($7,2), path=$8, status=$9, bytes=$10
+# GNU awk equivalent: use field positions in access.log
+# ip=$1, time=$4 (strip "["), method=$7 (strip '"'), path=$8, status=$9, bytes=$10
 
 b1_bp() {
-    "$BUILD/lparser" --regex "$REGEX" --fields "$FIELDS" --csv < "$LOGFILE"
+    "$BUILD/lparser" --format nginx --csv < "$LOGFILE"
 }
 b1_gnu() {
     awk '{
@@ -164,27 +163,27 @@ time_ms BP_MS  b3_bp
 time_ms GNU_MS b3_gnu
 cmp_row "field projection (lfilter vs awk)" "$BP_MS" "$GNU_MS" "$CSVLINES"
 
-# ── 4. Combined pipeline ───────────────────────────────────────────────────────
-hdr "4. Combined pipeline  lparser | lfilter  vs  awk"
+# ── 4. Filter + project  (fair: both tools read pre-parsed CSV) ────────────────
+hdr "4. Filter + project  (lfilter --where+--select vs awk, same CSV input)"
+# Both tools read from the same pre-parsed CSV file; no pipeline disparity.
 
 b4_bp() {
-    "$BUILD/lparser" --regex "$REGEX" --fields "$FIELDS" --csv < "$LOGFILE" | \
-    "$BUILD/lfilter" --where 'status>=400' --select 'ip,path,status'
+    "$BUILD/lfilter" --where 'status>=400' --select 'ip,path,status' < "$CSVFILE"
 }
 b4_gnu() {
     awk -F',' 'NR>1 && $5+0>=400 {print $1","$4","$5}' "$CSVFILE"
 }
 time_ms BP_MS  b4_bp
 time_ms GNU_MS b4_gnu
-cmp_row "full pipeline (BP vs awk on CSV)" "$BP_MS" "$GNU_MS" "$NLINES"
+cmp_row "filter+project (lfilter vs awk, CSV→CSV)" "$BP_MS" "$GNU_MS" "$CSVLINES"
 
-# ── 5. Store write ─────────────────────────────────────────────────────────────
-hdr "5. Store write  (lstore --put vs awk >> file)"
+# ── 5. Store write  (fair: both tools read pre-parsed CSV) ────────────────────
+hdr "5. Store write  (lstore --put vs awk, same CSV input)"
+# Both tools read from the same pre-parsed CSV file; no pipeline disparity.
 
 b5_bp() {
     rm -f "$DB_FILE"
-    "$BUILD/lparser" --regex "$REGEX" --fields "$FIELDS" --csv < "$LOGFILE" | \
-    "$BUILD/lstore" --db "$DB_FILE" --put --key-field ip
+    "$BUILD/lstore" --db "$DB_FILE" --put --key-field ip < "$CSVFILE"
 }
 b5_gnu() {
     rm -f "$GNU_DB"
@@ -192,7 +191,7 @@ b5_gnu() {
 }
 time_ms BP_MS  b5_bp
 time_ms GNU_MS b5_gnu
-cmp_row "store write (lstore vs awk>file)" "$BP_MS" "$GNU_MS" "$NLINES"
+cmp_row "store write (lstore vs awk, CSV→TSV)" "$BP_MS" "$GNU_MS" "$CSVLINES"
 
 # ── 6. auth.log parsing ────────────────────────────────────────────────────────
 hdr "6. auth.log parsing  (lparser --format auth vs awk)"
@@ -210,12 +209,34 @@ time_ms BP_MS  b6_bp
 time_ms GNU_MS b6_gnu
 cmp_row "auth.log parse (lparser vs awk)" "$BP_MS" "$GNU_MS" "$NLINES"
 
+# ── 7. End-to-end pipeline  (informational, no fair GNU baseline) ──────────────
+hdr "7. End-to-end pipeline  lparser|lfilter|lstore  (informational)"
+echo "  BusyPipe does parse+filter+store in one shot from raw log."
+echo "  GNU baseline runs only the awk filter step on pre-parsed CSV."
+echo "  These are NOT equivalent workloads — shown for reference only."
+
+b7_bp() {
+    rm -f "$DB_FILE"
+    "$BUILD/lparser" --format nginx --csv < "$LOGFILE" | \
+    "$BUILD/lfilter" --where 'status>=400' --select 'ip,path,status' | \
+    "$BUILD/lstore"  --db "$DB_FILE" --put --key-field ip
+}
+b7_gnu() {
+    awk -F',' 'NR>1 && $5+0>=400 {print $1","$4","$5}' "$CSVFILE"
+}
+time_ms BP_MS  b7_bp
+time_ms GNU_MS b7_gnu
+printf "  %-44s  BP=%5d ms  GNU=%5d ms (filter-only awk, different task)\n" \
+    "full pipeline vs awk filter" "$BP_MS" "$GNU_MS"
+
 # ── summary ────────────────────────────────────────────────────────────────────
 echo ""
 echo "============================================================"
 printf "  Done.  Wall-clock real time, best-of-%d runs.\n" "$REPEAT"
 printf "  Test data: %d lines per benchmark\n" "$NLINES"
 printf "  Binaries:  %s\n" "$BUILD"
+echo "  Tests 1-6: fair (same input source for BP and GNU)."
+echo "  Test 7: informational (full pipeline vs single awk step)."
 echo "============================================================"
 
 rm -f "$DB_FILE" "$GNU_DB"

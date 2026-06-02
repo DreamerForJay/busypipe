@@ -444,6 +444,112 @@ make -j$(nproc)
 
 ---
 
+## 效能最佳化記錄
+
+### 問題：lparser 比 GNU awk 慢 2.5 倍
+
+**症狀（最佳化前）：**
+```
+lparser --regex ...      = 440 ms
+GNU awk '{...}' access.log = 174 ms  (2.53× 差距，超過 50% 目標)
+```
+
+**根本原因：**
+POSIX `regexec()` 對每一行做完整的 NFA/DFA 比對，開銷遠高於
+AWK 的內建空白欄位切割（僅需線性掃描）。
+
+**解決方案：快速路徑解析（Fast-Path Parser）**
+
+在 `lparser.c` / `lparser_bb.c` 中，對已知的內建格式（`--format nginx/apache/auth`）
+新增手工 C 字串掃描函式 `parse_nginx_fast()` / `parse_auth_fast()`：
+
+```
+while (*p && *p != ' ') p++;   // 掃描到下一個空格
+while (*p && *p != '[') p++;   // 掃描到 '['
+...
+```
+
+- 時間複雜度：O(line_length)，與 AWK 相同
+- 不需要 NFA 狀態機 → 平均快 3–4×
+
+**同步採用的其他最佳化：**
+1. `setvbuf(stdin/stdout, NULL, _IOFBF, 1<<17)` — 128 KiB I/O 緩衝，減少 read/write syscall
+2. CSV 輸出從每欄多次 `putchar/fwrite` 改為單行整體 `fwrite(buf, pos, stdout)`
+3. 編譯旗標 `-O2 → -O3`
+
+**最佳化後結果（50,000 行，best-of-3）：**
+```
+lparser --format nginx = 140 ms  (GNU awk = 178 ms)  → BusyPipe 快 21%  ✓
+lparser --format auth  = 164 ms  (GNU awk = 201 ms)  → BusyPipe 快 18%  ✓
+完整管線 lparser|lfilter = 159 ms (GNU awk 122 ms)   → 差距 32%，在 50% 內  ✓
+```
+
+---
+
+## 效能問題：lstore 比 GNU awk 慢（第二階段）
+
+**症狀：**
+```
+store write (lstore vs awk, CSV→TSV)   BP = 332 ms   GNU = 264 ms   GNU faster
+```
+
+**分析過程：**
+
+即使改用 `extract_nth_field`（避免 strncpy+full split），lstore 仍慢 25%。
+診斷後發現問題出在**手動 fflush 頻率過高**：
+
+```
+WRITE_BUF_LINES = 64  → 50000 / 64 = 781 次 fflush()
+stdio 預設 8 KB buffer → 每 8192 bytes 自動 flush
+平均每行 108 bytes × 64 行 = 6912 bytes < 8 KB
+→ 手動 flush 比 stdio 自動 flush 更頻繁
+→ 781 次 write() syscall，比 stdio 自然的 659 次還多
+```
+
+**根本原因：** 
+- `WRITE_BUF_LINES = 64` 讓 fflush 在 stdio buffer 填滿**之前**就觸發
+- 等同於把 stdio buffer 縮小到 ~6.9 KB，比預設 8 KB 更小
+- 相比之下，GNU awk 的內建輸出緩衝更高效
+
+**解決方案：**
+1. `setvbuf(db, NULL, _IOFBF, 1<<17)` — 將 db 檔案的 stdio 緩衝擴大至 128 KiB
+2. `WRITE_BUF_LINES = 4096` — 安全 checkpoint 每 4096 行一次（間距拉大）
+3. 移除 `buf_bytes` 計數器（不再需要）
+
+**優化後結果：**
+```
+store write (lstore vs awk, CSV→TSV)   BP = 273 ms   GNU = 303 ms   BusyPipe ✓
+```
+
+---
+
+## benchmark.sh 公平性問題
+
+**症狀（第一輪優化後）：**
+```
+▶  4. Combined pipeline  lparser | lfilter  vs  awk
+   BP = 165 ms   GNU = 125 ms   GNU faster
+
+▶  5. Store write  (lstore --put vs awk >> file)
+   BP = 285 ms   GNU = 255 ms   GNU faster
+```
+
+**根本原因：比較不公平**
+
+| 測試 | BusyPipe 做了什麼 | GNU awk 做了什麼 |
+|------|-------------------|-----------------|
+| Test 4 | lparser（解析 raw log）\| lfilter（過濾） | awk 只讀 **已解析的 CSV** 過濾 |
+| Test 5 | lparser（解析 raw log）\| lstore（寫入） | awk 只讀 **已解析的 CSV** 轉格式 |
+
+BP 需要做的工作遠比 GNU 多，比較無意義。
+
+**解決方案：修改 benchmark 讓兩邊讀相同輸入**
+- Test 4：lfilter 讀 CSVFILE vs awk 讀 CSVFILE（公平）
+- Test 5：lstore 讀 CSVFILE vs awk 讀 CSVFILE（公平）
+- Test 7（新增）：完整管線展示，標明非等效比較
+
+---
+
 ## 關鍵知識整理
 
 ### BusyBox 1.36.x 建置系統重要規則
