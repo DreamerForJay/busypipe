@@ -80,6 +80,7 @@
 - [x] `samples/nginx.log` — Nginx Combined Log Format 樣本（`--format nginx`）
 - [x] `samples/apache.log` — Apache Common Log Format 樣本（`--format apache`，含 `-` bytes）
 - [x] `samples/custom.log` — 應用程式事件日誌樣本（自訂 `--regex + --fields`）
+- [x] `tools/gen_log.c` — 測試用紀錄檔生成器（獨立工具，`make -C tools`）
 
 ### 功能驗證
 

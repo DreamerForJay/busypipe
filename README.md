@@ -340,6 +340,9 @@ busypipe/
 │   ├── nginx.log          Nginx Combined Log Format（--format nginx）
 │   ├── apache.log         Apache Common Log Format（--format apache，含 "-" bytes）
 │   └── custom.log         應用程式事件日誌（自訂 --regex + --fields 示範）
+├── tools/                 開發輔助工具（不納入主建置、不整合進 BusyBox）
+│   ├── Makefile           獨立建置（make -C tools）
+│   └── gen_log.c          測試用紀錄檔生成器
 ├── scripts/
 │   ├── linux_pipeline_demo.sh   完整 Linux 雙管線 Demo
 │   ├── demo_auth.sh             auth.log 管線 Demo
@@ -398,6 +401,79 @@ gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
 | auth.log 解析 | ~180 ms | ~75 ms | 同 lparser overhead |
 
 **結論：** `lfilter` 和 `lstore` 的處理速度與 awk 相當；`lparser` 的 POSIX regex 編譯有固定開銷，大量資料時吞吐量達 **10 萬行/秒以上**，足以應付嵌入式環境需求。
+
+---
+
+## 開發輔助工具
+
+> **注意：** 此工具僅供開發測試使用，不納入主建置流程，不整合進 BusyBox。
+
+### `gen_log` — 測試紀錄檔生成器
+
+`tools/gen_log.c` 可依指定格式和參數生成任意數量的測試紀錄，輸出至 `samples/` 目錄。
+
+**建置：**
+
+```bash
+make -C tools
+# 執行檔位於 tools/build/gen_log
+```
+
+**完整參數列表：**
+
+| 類別 | 參數 | 說明 | 預設值 |
+|------|------|------|--------|
+| 格式 | `--format nginx\|apache\|auth\|custom` | 紀錄格式 | `nginx` |
+| 輸出 | `--output <路徑>` | 輸出路徑 | `samples/<format>_gen.log` |
+| 輸出 | `--count <n>` | 生成筆數 | `100` |
+| 輸出 | `--append` | 附加至現有檔案（預設覆寫）| — |
+| 輸出 | `--quiet` / `-q` | 不輸出完成訊息 | — |
+| 亂數 | `--seed <n>` | 亂數種子（0 = 固定種子 42）| 依時間 |
+| nginx/apache | `--error-rate <0-100>` | 4xx/5xx 比例 | `20` |
+| nginx/apache | `--path-pool <n>` | 唯一路徑數（最大 38）| `20` |
+| nginx/apache | `--method-get <0-100>` | GET 比例（其餘均分 POST/PUT/DELETE/HEAD）| `70` |
+| apache | `--no-bytes-rate <0-100>` | bytes 欄位為 `-` 的額外比例（HEAD/3xx 永遠為 `-`）| `15` |
+| auth | `--fail-rate <0-100>` | Failed password 比例 | `40` |
+| auth | `--user-pool <n>` | 唯一用戶名數（最大 20）| `5` |
+| 共用 | `--ip-pool <n>` | 唯一來源 IP 數（最大 256）| `10` |
+| 共用 | `--time-start <epoch>` | 起始 Unix 時間戳 | 當前時間 |
+| 共用 | `--time-step <秒>` | 每筆時間間隔（0 = 隨機 1-30 秒）| `0` |
+
+**使用範例：**
+
+```bash
+# 生成 1000 筆 nginx log，30% 錯誤率，50 個 IP（可重現）
+./tools/build/gen_log --format nginx --count 1000 --seed 42 \
+    --error-rate 30 --ip-pool 50
+
+# 生成 apache log，模擬高 HEAD 請求比例（大量 "-" bytes）
+./tools/build/gen_log --format apache --count 500 \
+    --no-bytes-rate 25 --method-get 30
+
+# 生成 auth log，模擬暴力攻擊（高失敗率、少數攻擊 IP）
+./tools/build/gen_log --format auth --count 300 \
+    --fail-rate 80 --ip-pool 3 --user-pool 2
+
+# 生成 custom log，固定 seed 確保可重現
+./tools/build/gen_log --format custom --count 200 --seed 0
+
+# 疊加生成（用於漸增測試）
+./tools/build/gen_log --format nginx --count 100 --append \
+    --output samples/nginx_gen.log
+
+# 接管線直接測試
+./tools/build/gen_log --format nginx --count 1000 --seed 99 \
+    --error-rate 30 --ip-pool 5 -q \
+    --output samples/nginx_gen.log
+./build/lparser --format nginx --csv < samples/nginx_gen.log \
+    | ./build/lfilter --where 'status>=400' \
+    | ./build/lstore --db data/errors.tsv --put --key-field ip --ttl 3600
+./build/lstore --db data/errors.tsv --list
+```
+
+**生成檔案放置：** `samples/<format>_gen.log`（或 `--output` 指定路徑）
+
+> `*_gen.log` 為生成的測試資料，不加入版本控制。
 
 ---
 
