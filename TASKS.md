@@ -76,11 +76,11 @@
 ### Pipeline 1：access.log HTTP 錯誤分析
 
 ```bash
-lparser --format nginx --csv < samples/access.log \
+lparser --format nginx --csv < samples/nginx.log \
   | lfilter --where 'status>=400' --select 'ip,path,status' \
   | lstore --db data/errors.tsv --put --key-field ip --ttl 3600
 
-lstore --db data/errors.tsv --get 192.168.0.4
+lstore --db data/errors.tsv --get 192.168.1.3
 lstore --db data/errors.tsv --list
 ```
 

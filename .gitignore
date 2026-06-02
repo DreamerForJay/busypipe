@@ -5,3 +5,5 @@ data/
 *.tmp
 busybox-1.36.1*
 .claude/
+tools/build/
+samples/*_gen.log
