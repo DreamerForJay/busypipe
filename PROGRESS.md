@@ -66,7 +66,7 @@
 
 - [x] `Makefile`（Linux 相容）
   - [x] `make`          — 建置
-  - [x] `make test`     — smoke test（6 個場景）
+  - [x] `make test`     — smoke test（9 個場景）
   - [x] `make bench`    — benchmark
   - [x] `make install`  — 安裝到 PREFIX
   - [x] `make install-man` — 安裝 man pages
@@ -77,6 +77,9 @@
 - [x] `scripts/demo.ps1` — Windows PowerShell Demo
 - [x] `scripts/test_store.ps1` — lstore 回歸測試
 - [x] `scripts/run_linux_demo.ps1` — Windows 啟動 Docker Demo
+- [x] `samples/nginx.log` — Nginx Combined Log Format 樣本（`--format nginx`）
+- [x] `samples/apache.log` — Apache Common Log Format 樣本（`--format apache`，含 `-` bytes）
+- [x] `samples/custom.log` — 應用程式事件日誌樣本（自訂 `--regex + --fields`）
 
 ### 功能驗證
 
@@ -95,7 +98,7 @@
 
 | 指令 | 說明 | 環境 |
 |------|------|------|
-| `make test` | 6 個 smoke test | Linux / Docker |
+| `make test` | 9 個 smoke test | Linux / Docker |
 | `bash scripts/linux_pipeline_demo.sh` | access.log + auth.log 雙管線展示 | Linux / Docker |
 | `bash scripts/demo_auth.sh` | auth.log SSH 失敗登入分析 | Linux / Docker |
 | `make bench` | BusyPipe vs GNU awk 效能比較 | Linux / Docker |

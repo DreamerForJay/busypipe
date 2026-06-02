@@ -60,6 +60,17 @@ test: all
 	@echo "=== lparser: auth.log (CSV) ==="
 	@./$(BUILD_DIR)/lparser \
 	  --format auth --csv < samples/auth.log
+	@echo "=== lparser: nginx.log (--format nginx) ==="
+	@./$(BUILD_DIR)/lparser \
+	  --format nginx --csv < samples/nginx.log
+	@echo "=== lparser: apache.log (--format apache，含 \"-\" bytes) ==="
+	@./$(BUILD_DIR)/lparser \
+	  --format apache --csv < samples/apache.log
+	@echo "=== lparser: custom.log (自訂 --regex) ==="
+	@./$(BUILD_DIR)/lparser \
+	  --regex '^([^ ]+) +([A-Z]+) +([^ ]+) +([^ ]+) +([^ ]+) +([0-9]+)' \
+	  --fields time,level,client,action,result,duration_ms \
+	  --csv < samples/custom.log
 	@echo "=== lfilter: status>=400 ==="
 	@./$(BUILD_DIR)/lparser \
 	  --regex '^([^ ]+) .* \[([^]]+)\] "([^ ]+) ([^ ]+) [^"]*" ([0-9]{3}) .*' \

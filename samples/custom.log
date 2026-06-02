@@ -1,0 +1,5 @@
+2026-04-30T08:00:00 INFO  192.168.1.10 user_login  success 85
+2026-04-30T08:00:03 WARN  192.168.1.11 db_query    slow    3250
+2026-04-30T08:00:07 ERROR 192.168.1.12 api_request failed  0
+2026-04-30T08:00:10 INFO  192.168.1.10 user_logout success 12
+2026-04-30T08:00:15 ERROR 192.168.1.13 file_upload failed  0

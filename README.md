@@ -25,15 +25,17 @@ lparser  →  lfilter  →  lstore
 
 ```bash
 # 使用預設格式（nginx / apache / auth）
-lparser --format nginx --csv < access.log
-lparser --format auth  --json < auth.log
+lparser --format nginx  --csv  < samples/nginx.log
+lparser --format apache --csv  < samples/apache.log
+lparser --format auth   --json < samples/auth.log
 
-# 使用自訂 regex
-lparser --regex '^([0-9.]+) .* "([A-Z]+) ([^ ]+)' \
-        --fields ip,method,path --csv < access.log
+# 使用自訂 regex（samples/custom.log 為非標準格式，無法用預設格式解析）
+lparser --regex '^([^ ]+) +([A-Z]+) +([^ ]+) +([^ ]+) +([^ ]+) +([0-9]+)' \
+        --fields time,level,client,action,result,duration_ms \
+        --csv < samples/custom.log
 
 # 統計輸出
-lparser --format nginx --csv --stats < access.log
+lparser --format nginx --csv --stats < samples/nginx.log
 ```
 
 **預設格式（`--format`）：**
@@ -43,6 +45,15 @@ lparser --format nginx --csv --stats < access.log
 | `nginx` | Nginx/Apache Combined Log | `ip,time,method,path,status,bytes` |
 | `apache` | Apache Common Log Format | `ip,time,method,path,status,bytes` |
 | `auth` | SSH auth.log sshd 事件 | `time,host,result,user,src_ip,port` |
+
+**各格式對應樣本檔：**
+
+| 格式 | 樣本檔 | 重點說明 |
+|------|--------|---------|
+| `nginx` | `samples/nginx.log` | Nginx Combined Log Format；含 referrer/user-agent，僅擷取前 6 欄位 |
+| `apache` | `samples/apache.log` | Apache Common Log Format；`bytes` 欄位允許 `-`（HEAD 請求、302 轉址時無回應本體）|
+| `auth` | `samples/auth.log` | SSH 認證事件（`Failed` / `Accepted` password）|
+| 自訂 | `samples/custom.log` | 應用程式事件日誌；需搭配 `--regex + --fields`，無法以預設格式解析 |
 
 ### `lfilter` — CSV 串流過濾器
 
@@ -104,7 +115,7 @@ key<TAB>expires_at_epoch<TAB>raw_csv_row
 ### Pipeline 1：Nginx access.log → HTTP 錯誤儲存
 
 ```bash
-lparser --format nginx --csv < access.log \
+lparser --format nginx --csv < samples/nginx.log \
   | lfilter --where 'status>=400' --select 'ip,path,status' \
   | lstore  --db errors.tsv --put --key-field ip --ttl 3600
 
@@ -130,7 +141,7 @@ lstore --db ssh_fail.tsv --get 10.0.0.8
 ```bash
 lparser \
   --regex '^([^ ]+) .* \[([^]]+)\] "([^ ]+) ([^ ]+) [^"]*" ([0-9]{3}) .*' \
-  --fields ip,time,method,path,status --csv < access.log \
+  --fields ip,time,method,path,status --csv < samples/access.log \
   | lfilter --where 'status>=400' --format json
 ```
 
@@ -187,7 +198,7 @@ BusyPipe 的驗證分為三個層次，由淺至深：
 
 | 指令 | 說明 | 環境 |
 |------|------|------|
-| `make test` | 6 個 smoke test（解析、過濾、儲存管線）| Linux / Docker |
+| `make test` | 9 個 smoke test（解析四種格式、過濾、儲存管線）| Linux / Docker |
 | `bash scripts/linux_pipeline_demo.sh` | access.log + auth.log 雙管線視覺化展示 | Linux / Docker |
 | `bash scripts/demo_auth.sh` | auth.log SSH 失敗登入分析展示 | Linux / Docker |
 | `bash scripts/benchmark.sh` | BusyPipe vs GNU awk 吞吐量比較 | Linux / Docker |
@@ -264,22 +275,27 @@ docker run --rm -it -v "${PWD}:/work" -w /work/busybox-1.36.1 gcc:14 bash
 # 在容器內執行（或用下方一次性指令）
 
 # 確認三個 applet 存在
-./busybox --list | grep -E 'lparser|lfilter|lstore'
+./busybox lparser --help > /dev/null && echo "[PASS] lparser"
+./busybox lfilter --help > /dev/null && echo "[PASS] lfilter"
+./busybox lstore  --help > /dev/null && echo "[PASS] lstore"
 
-# --help 驗證
-./busybox lparser --help
+# 四種解析格式驗證（樣本檔掛載於 /work/samples/）
+./busybox lparser --format nginx  --csv < /work/samples/nginx.log
+./busybox lparser --format apache --csv < /work/samples/apache.log
+./busybox lparser --format auth   --csv < /work/samples/auth.log
+./busybox lparser \
+  --regex '^([^ ]+) +([A-Z]+) +([^ ]+) +([^ ]+) +([^ ]+) +([0-9]+)' \
+  --fields time,level,client,action,result,duration_ms \
+  --csv < /work/samples/custom.log
 
-# Pipeline 1：access.log HTTP 錯誤分析
-printf '%s\n' \
-  '1.2.3.4 - - [01/Jun/2026:12:00:00 +0800] "GET /admin HTTP/1.1" 404 128' \
-  '5.6.7.8 - - [01/Jun/2026:12:00:01 +0800] "POST /login HTTP/1.1" 500 64' \
-  | ./busybox lparser --format nginx --csv \
+# Pipeline 1：nginx.log HTTP 錯誤分析
+./busybox lparser --format nginx --csv < /work/samples/nginx.log \
   | ./busybox lfilter --where 'status>=400' \
   | ./busybox lstore  --db /tmp/errors.tsv --put --key-field ip --ttl 3600
 
 ./busybox lstore --db /tmp/errors.tsv --list
 
-# Pipeline 2：auth.log SSH 失敗登入（使用專案 samples）
+# Pipeline 2：auth.log SSH 失敗登入
 ./busybox lparser --format auth --csv < /work/samples/auth.log \
   | ./busybox lfilter --contains 'result=Failed' \
   | ./busybox lstore  --db /tmp/ssh.tsv --put --key-field src_ip --ttl 86400
@@ -319,8 +335,11 @@ busypipe/
 │       ├── lfilter.1      man page
 │       └── lstore.1       man page
 ├── samples/
-│   ├── access.log         範例 Nginx access log
-│   └── auth.log           範例 SSH auth.log
+│   ├── access.log         自訂 regex 示範（同 nginx 格式，供 --regex 範例使用）
+│   ├── auth.log           SSH auth.log 範例（--format auth）
+│   ├── nginx.log          Nginx Combined Log Format（--format nginx）
+│   ├── apache.log         Apache Common Log Format（--format apache，含 "-" bytes）
+│   └── custom.log         應用程式事件日誌（自訂 --regex + --fields 示範）
 ├── scripts/
 │   ├── linux_pipeline_demo.sh   完整 Linux 雙管線 Demo
 │   ├── demo_auth.sh             auth.log 管線 Demo
