@@ -191,6 +191,7 @@ BusyPipe 的驗證分為三個層次，由淺至深：
 | `bash scripts/linux_pipeline_demo.sh` | access.log + auth.log 雙管線視覺化展示 | Linux / Docker |
 | `bash scripts/demo_auth.sh` | auth.log SSH 失敗登入分析展示 | Linux / Docker |
 | `bash scripts/benchmark.sh` | BusyPipe vs GNU awk 吞吐量比較 | Linux / Docker |
+| `bash scripts/toybox_compat.sh` | Toybox / GNU 相容性驗證（9 項） | Linux / Docker |
 | `powershell scripts\test_store.ps1` | lstore CRUD 回歸測試 | Windows |
 | `powershell scripts\demo.ps1` | lfilter / lstore 視覺化展示 | Windows |
 
@@ -325,6 +326,7 @@ busypipe/
 │   ├── linux_pipeline_demo.sh   完整 Linux 雙管線 Demo
 │   ├── demo_auth.sh             auth.log 管線 Demo
 │   ├── benchmark.sh             效能比較腳本
+│   ├── toybox_compat.sh         Toybox / GNU 相容性驗證
 │   ├── demo.ps1                 Windows PowerShell Demo
 │   ├── test_store.ps1           lstore 回歸測試（PowerShell）
 │   └── run_linux_demo.ps1       Windows 啟動 Docker Demo
@@ -411,6 +413,55 @@ gcc -Iinclude -Wall -Wextra -Werror -std=c11 -O2 \
 | `lstore --put/get/delete` | 無對應單一工具 |
 
 CLI 選項風格遵循 GNU long-option 慣例（`--option value`）。
+
+### 相容性測試
+
+`scripts/toybox_compat.sh` 自動驗證 BusyPipe 的輸出格式能被 Toybox / GNU 標準工具直接處理：
+
+```powershell
+# Windows（需要 Docker）
+docker run --rm -v "${PWD}:/work" -w /work gcc:14 bash -c "apt-get update -q && apt-get install -y -q toybox && make && bash scripts/toybox_compat.sh"
+```
+
+```bash
+# Linux（需先安裝 toybox）
+make && bash scripts/toybox_compat.sh
+```
+
+**測試結果（Toybox 0.8.9，Debian trixie）：**
+
+```
+============================================================
+  BusyPipe Toybox / GNU Compatibility Test
+  Toybox: toybox 0.8.9
+  toybox awk=false  cut=false  grep=false
+============================================================
+
+▶  Group 1: lparser CSV → toybox/GNU cut
+[PASS] lparser CSV header readable by cut
+[PASS] lparser CSV col5 (status) extractable by cut
+[PASS] lparser CSV multi-column extraction by cut
+
+▶  Group 2: lfilter --where vs GNU awk (toybox awk unavailable in this build)
+[PASS] lfilter --where 'status>=400' row count matches awk (2 rows)
+[PASS] lfilter --select 'ip,status' output identical to cut -f1,5
+
+▶  Group 3: lfilter --contains vs GNU grep (toybox grep unavailable in this build)
+[PASS] lfilter --contains 'result=Failed' matches grep count (2 rows)
+
+▶  Group 4: lstore TSV format readable by standard tools
+[PASS] lstore TSV key column readable by awk (2 records)
+[PASS] lstore TSV field-3 (raw CSV) readable by cut (2 records)
+[PASS] lstore --list output is non-empty (2 lines)
+
+============================================================
+  Results:  PASS=9  FAIL=0  SKIP=0
+============================================================
+```
+
+> **說明：** 該版本 toybox 套件未內建 `awk`/`cut`/`grep`，相關測試自動 fallback 至 GNU 對應工具。
+> 測試腳本會自動偵測並標示使用哪個版本的工具，無需手動調整。
+> BusyPipe 的 CSV/TSV 輸出格式與 GNU `cut`、`awk`、`grep` 完全相容。
 
 ---
 
