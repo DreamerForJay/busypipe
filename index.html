@@ -1,0 +1,2040 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+  <title>BusyPipe — 嵌入式資料管線工具鏈｜UNIX 系統程式設計期末專題</title>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- AOS -->
+  <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet" />
+
+  <style>
+    :root {
+      --brand-green:      #22c55e;
+      --brand-green-light:#4ade80;
+      --brand-green-dark: #16a34a;
+      --brand-cyan:       #06b6d4;
+      --brand-bg:         #0d1117;
+      --brand-bg-alt:     #111827;
+      --brand-surface:    #161b22;
+      --brand-border:     rgba(48, 54, 61, 0.8);
+      --brand-muted:      #8b949e;
+      --card-radius:      20px;
+      --section-padding:  6rem;
+      --transition:       all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      overflow-x: hidden;
+      overflow-y: scroll;
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Noto Sans TC', 'Inter', system-ui, sans-serif;
+      background-color: var(--brand-bg);
+      color: #e6edf3;
+      overflow-x: hidden;
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: var(--brand-bg); }
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, var(--brand-green-dark), var(--brand-cyan));
+      border-radius: 8px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, var(--brand-green), var(--brand-cyan));
+    }
+
+    /* ── Loading Overlay ── */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(135deg, #020b05, #0d1117, #020f1a);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.6s, visibility 0.6s;
+    }
+    .loading-overlay.hidden { opacity: 0; visibility: hidden; }
+    .loader-ring {
+      width: 56px;
+      height: 56px;
+      border: 3px solid rgba(34, 197, 94, 0.15);
+      border-top-color: var(--brand-green);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin-bottom: 1rem;
+    }
+    .loader-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--brand-green);
+      letter-spacing: 0.15em;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Scroll-to-top ── */
+    .scroll-top {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--brand-green-dark), var(--brand-cyan));
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      visibility: hidden;
+      transition: var(--transition);
+      box-shadow: 0 4px 20px rgba(34, 197, 94, 0.4);
+      z-index: 1000;
+      border: none;
+    }
+    .scroll-top.visible { opacity: 1; visibility: visible; }
+    .scroll-top:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 28px rgba(34, 197, 94, 0.55);
+    }
+
+    /* ── Navbar ── */
+    .navbar {
+      backdrop-filter: blur(24px);
+      background: linear-gradient(135deg,
+        rgba(13, 17, 23, 0.97) 0%,
+        rgba(6, 16, 12, 0.97) 100%) !important;
+      border-bottom: 1px solid rgba(34, 197, 94, 0.12);
+      box-shadow: 0 1px 24px rgba(0, 0, 0, 0.5);
+      transition: var(--transition);
+    }
+    .navbar.scrolled {
+      box-shadow: 0 4px 40px rgba(34, 197, 94, 0.1);
+      border-bottom-color: rgba(34, 197, 94, 0.2);
+    }
+    .navbar-brand {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--brand-green) !important;
+      letter-spacing: -0.02em;
+      transition: var(--transition);
+    }
+    .navbar-brand span { color: #8b949e; font-weight: 400; }
+    .navbar-brand:hover { color: var(--brand-green-light) !important; }
+
+    .nav-link {
+      font-weight: 500;
+      font-size: 0.9rem;
+      color: #8b949e !important;
+      padding: 0.45rem 0.9rem !important;
+      border-radius: 10px;
+      transition: var(--transition);
+      position: relative;
+    }
+    .nav-link::after {
+      content: '';
+      position: absolute;
+      bottom: 4px;
+      left: 50%;
+      width: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--brand-green), var(--brand-cyan));
+      transition: var(--transition);
+      transform: translateX(-50%);
+      border-radius: 99px;
+    }
+    .nav-link:hover,
+    .nav-link.active {
+      color: #e6edf3 !important;
+      background: rgba(34, 197, 94, 0.08);
+    }
+    .nav-link:hover::after,
+    .nav-link.active::after { width: 55%; }
+
+    .navbar-toggler {
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      transition: var(--transition);
+    }
+    .navbar-toggler:hover {
+      background: rgba(34, 197, 94, 0.1);
+      border-color: var(--brand-green);
+    }
+    .navbar-toggler:focus {
+      box-shadow: 0 0 0 0.2rem rgba(34, 197, 94, 0.3);
+    }
+    .navbar-toggler-icon {
+      filter: brightness(0) saturate(100%) invert(64%) sepia(56%) saturate(500%) hue-rotate(88deg) brightness(99%) contrast(91%);
+    }
+
+    /* ── Hero ── */
+    .hero {
+      min-height: 100vh;
+      padding-top: 7rem;
+      padding-bottom: 5rem;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 40%, rgba(34,197,94,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 20%, rgba(6,182,212,0.08) 0%, transparent 55%),
+        linear-gradient(160deg, #020b05 0%, #0d1117 40%, #020f1a 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(34,197,94,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(34,197,94,0.04) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      animation: grid-pulse 8s ease-in-out infinite;
+    }
+    @keyframes grid-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 1rem;
+      border-radius: 99px;
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      font-size: 0.78rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--brand-green-light);
+      font-family: 'JetBrains Mono', monospace;
+      animation: float 3.5s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-5px); }
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--brand-green);
+      animation: pdot 2s ease-in-out infinite;
+    }
+    @keyframes pdot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.6; transform: scale(1.3); }
+    }
+
+    .hero-title {
+      font-size: clamp(2.6rem, 5vw, 4rem);
+      font-weight: 900;
+      line-height: 1.15;
+      font-family: 'JetBrains Mono', monospace;
+      background: linear-gradient(135deg, #e6edf3 0%, var(--brand-green-light) 60%, var(--brand-cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: 1.1rem;
+      color: #8b949e;
+      line-height: 1.75;
+    }
+
+    .pipeline-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.95rem;
+      flex-wrap: wrap;
+    }
+    .pipe-tool {
+      padding: 0.35rem 0.9rem;
+      border-radius: 10px;
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.07);
+      color: var(--brand-green-light);
+      transition: var(--transition);
+    }
+    .pipe-tool:hover {
+      background: rgba(34, 197, 94, 0.15);
+      border-color: var(--brand-green);
+    }
+    .pipe-sep {
+      color: rgba(34, 197, 94, 0.5);
+      font-size: 1.2rem;
+      font-weight: 300;
+    }
+
+    .btn-pill {
+      border-radius: 99px;
+      padding: 0.7rem 1.8rem;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-pill::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.15);
+      transform: translate(-50%, -50%);
+      transition: width 0.55s, height 0.55s;
+    }
+    .btn-pill:hover::before { width: 300px; height: 300px; }
+    .btn-pill:hover { transform: translateY(-3px); }
+
+    .btn-green {
+      background: linear-gradient(135deg, var(--brand-green-dark), var(--brand-green));
+      color: #fff;
+      border: none;
+      box-shadow: 0 4px 20px rgba(34, 197, 94, 0.3);
+    }
+    .btn-green:hover {
+      color: #fff;
+      box-shadow: 0 8px 32px rgba(34, 197, 94, 0.5);
+    }
+    .btn-outline-green {
+      border: 1.5px solid rgba(34, 197, 94, 0.5);
+      color: var(--brand-green-light);
+      background: transparent;
+    }
+    .btn-outline-green:hover {
+      background: rgba(34, 197, 94, 0.1);
+      border-color: var(--brand-green);
+      color: var(--brand-green-light);
+    }
+    .btn-outline-dim {
+      border: 1.5px solid rgba(139, 148, 158, 0.35);
+      color: #8b949e;
+      background: transparent;
+    }
+    .btn-outline-dim:hover {
+      border-color: #8b949e;
+      color: #e6edf3;
+      background: rgba(139, 148, 158, 0.1);
+    }
+
+    /* ── Hero Stats Card ── */
+    .stats-card {
+      background: rgba(22, 27, 34, 0.9);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      border-radius: var(--card-radius);
+      backdrop-filter: blur(20px);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(34,197,94,0.05);
+      transition: var(--transition);
+    }
+    .stats-card:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 28px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(34,197,94,0.1);
+      border-color: rgba(34, 197, 94, 0.35);
+    }
+    .stat-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--brand-green), var(--brand-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+    }
+    .stat-label { font-size: 0.82rem; color: #8b949e; line-height: 1.4; }
+
+    /* ── Sections ── */
+    section {
+      padding-block: var(--section-padding);
+      position: relative;
+    }
+    .section-alt { background: var(--brand-bg-alt); }
+
+    .section-title {
+      font-weight: 900;
+      font-size: clamp(1.7rem, 3vw, 2.2rem);
+      background: linear-gradient(135deg, #e6edf3, var(--brand-green-light));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.6rem;
+    }
+    .section-lead {
+      color: #8b949e;
+      font-size: 1.02rem;
+      line-height: 1.75;
+      max-width: 660px;
+    }
+    .section-divider {
+      width: 72px;
+      height: 3px;
+      background: linear-gradient(90deg, var(--brand-green), var(--brand-cyan), var(--brand-green));
+      background-size: 200%;
+      border-radius: 99px;
+      margin-top: 1.2rem;
+      margin-bottom: 3rem;
+      animation: shimmer 3s ease-in-out infinite;
+    }
+    @keyframes shimmer {
+      0%   { background-position: 0%; }
+      50%  { background-position: 100%; }
+      100% { background-position: 0%; }
+    }
+
+    /* ── Cards ── */
+    .card-dark {
+      background: rgba(22, 27, 34, 0.95);
+      border: 1px solid var(--brand-border);
+      border-radius: var(--card-radius);
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+    .card-dark::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(34,197,94,0.05), transparent);
+      transition: left 0.65s;
+    }
+    .card-dark:hover::before { left: 100%; }
+    .card-dark:hover {
+      transform: translateY(-6px);
+      border-color: rgba(34, 197, 94, 0.3);
+      box-shadow: 0 16px 44px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(34,197,94,0.08);
+    }
+
+    .icon-box {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      flex-shrink: 0;
+    }
+
+    /* ── Terminal ── */
+    .terminal {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .terminal-bar {
+      background: #161b22;
+      padding: 0.55rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      border-bottom: 1px solid #30363d;
+    }
+    .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .dot-r { background: #ff5f57; }
+    .dot-y { background: #ffbd2e; }
+    .dot-g { background: #28c840; }
+    .terminal pre {
+      margin: 0;
+      padding: 1.2rem 1.4rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      line-height: 1.7;
+      color: #c9d1d9;
+      overflow-x: auto;
+    }
+    .c-green  { color: #4ade80; }
+    .c-cyan   { color: #67e8f9; }
+    .c-gray   { color: #6e7681; }
+    .c-yellow { color: #e3b341; }
+    .c-white  { color: #e6edf3; }
+    .c-pipe   { color: rgba(34,197,94,0.6); }
+
+    /* ── Pipeline arch ── */
+    .pipe-step {
+      border-left: 3px solid rgba(34, 197, 94, 0.3);
+      padding-left: 1.2rem;
+      position: relative;
+    }
+    .pipe-step::before {
+      content: '';
+      position: absolute;
+      left: -6px;
+      top: 0.6rem;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--brand-green);
+      box-shadow: 0 0 8px var(--brand-green);
+    }
+    .pipe-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(34, 197, 94, 0.4);
+      font-size: 1.4rem;
+      padding: 0.5rem 0;
+      font-family: monospace;
+    }
+
+    /* ── Tag pills ── */
+    .tag-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.3rem 0.85rem;
+      border-radius: 99px;
+      background: rgba(34, 197, 94, 0.08);
+      color: var(--brand-green-light);
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      margin: 0.2rem;
+      transition: var(--transition);
+    }
+    .tag-pill:hover {
+      background: rgba(34, 197, 94, 0.18);
+      border-color: rgba(34, 197, 94, 0.45);
+      transform: translateY(-2px);
+    }
+
+    /* ── Member cards ── */
+    .member-card {
+      background: rgba(22, 27, 34, 0.95);
+      border: 1px solid var(--brand-border);
+      border-radius: var(--card-radius);
+      transition: var(--transition);
+      text-align: left;
+      position: relative;
+      overflow: hidden;
+    }
+    .member-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--accent-grad, linear-gradient(90deg, var(--brand-green), var(--brand-cyan)));
+      transform: scaleX(0);
+      transition: transform 0.4s ease;
+    }
+    .member-card:hover::after { transform: scaleX(1); }
+    .member-card:hover {
+      transform: translateY(-8px);
+      border-color: rgba(34, 197, 94, 0.25);
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+    }
+    .avatar {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: #fff;
+      margin: 0 auto 1rem;
+      transition: transform 0.35s ease;
+    }
+    .member-card:hover .avatar { transform: scale(1.1); }
+    .role-badge {
+      display: inline-block;
+      padding: 0.2rem 0.75rem;
+      border-radius: 99px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 0.9rem;
+    }
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      font-size: 0.82rem;
+      color: #8b949e;
+      text-align: left;
+      margin-bottom: 0.4rem;
+    }
+    .task-dot { color: var(--brand-green); margin-top: 0.1rem; flex-shrink: 0; }
+    .issue-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: #6e7681;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 0.15rem 0.5rem;
+    }
+
+    /* ── Slides ── */
+    .slides-wrap {
+      border-radius: var(--card-radius);
+      overflow: hidden;
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      box-shadow: 0 12px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(34,197,94,0.05);
+      transition: var(--transition);
+    }
+    .slides-wrap:hover {
+      transform: scale(1.01);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(34,197,94,0.08);
+    }
+
+    /* ── bg pattern ── */
+    .bg-pattern {
+      position: absolute;
+      inset: 0;
+      opacity: 0.025;
+      background-image:
+        linear-gradient(30deg, var(--brand-green) 12%, transparent 12.5%, transparent 87%, var(--brand-green) 87.5%),
+        linear-gradient(150deg, var(--brand-green) 12%, transparent 12.5%, transparent 87%, var(--brand-green) 87.5%);
+      background-size: 72px 124px;
+      pointer-events: none;
+    }
+
+    /* ── Footer ── */
+    footer {
+      background: linear-gradient(135deg, #020b05, #0d1117);
+      color: #6e7681;
+      padding-block: 2.8rem;
+      border-top: 1px solid rgba(34, 197, 94, 0.1);
+      font-size: 0.9rem;
+    }
+    footer::before {
+      content: '';
+      display: block;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--brand-green), transparent);
+      margin-bottom: 2.8rem;
+      opacity: 0.4;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 991px) {
+      .navbar-collapse {
+        margin-top: 0.8rem;
+        padding: 0.8rem;
+        background: rgba(22, 27, 34, 0.95);
+        border-radius: 12px;
+        border: 1px solid var(--brand-border);
+      }
+    }
+    @media (max-width: 768px) {
+      :root { --section-padding: 3.5rem; }
+      .hero { min-height: auto; padding-top: 5rem; }
+      .hero-title { font-size: 2rem; }
+      .btn-pill { width: 100%; }
+      .slides-wrap:hover { transform: scale(1); }
+      .card-dark:hover { transform: translateY(-3px); }
+      .member-card:hover { transform: translateY(-4px); }
+      .stats-card:hover { transform: translateY(-4px); }
+    }
+    @media (max-width: 576px) {
+      .hero-title { font-size: 1.7rem; }
+      .section-title { font-size: 1.5rem; }
+    }
+    @media (hover: none) and (pointer: coarse) {
+      * { -webkit-tap-highlight-color: transparent; }
+      .btn-pill:active { transform: scale(0.96); }
+    }
+
+    /* ── GitHub Profile Integration ── */
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: inherit;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+    .avatar img.loaded { opacity: 1; }
+    @keyframes avatar-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.5; }
+    }
+    .avatar.gh-loading { animation: avatar-pulse 1.2s ease-in-out infinite; }
+    .member-gh-bio {
+      font-size: .78rem;
+      color: #8b949e;
+      line-height: 1.55;
+      margin: .25rem 0 .4rem;
+      font-style: italic;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .member-gh-stats {
+      display: flex;
+      gap: .8rem;
+      font-size: .72rem;
+      color: #8b949e;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: .55rem;
+      flex-wrap: wrap;
+    }
+    .member-gh-stats b { color: #e6edf3; font-weight: 600; }
+
+    /* ── Quick Start Step Number ── */
+    .qs-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.5rem;
+      font-weight: 700;
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(34,197,94,0.07);
+      border: 1px solid rgba(34,197,94,0.25);
+      color: var(--brand-green-light);
+      flex-shrink: 0;
+      margin-bottom: 0.9rem;
+    }
+
+    /* ── Benchmark Bars ── */
+    .bench-row { margin-bottom: 1.3rem; }
+    .bench-row:last-of-type { margin-bottom: 0; }
+    .bench-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.45rem;
+    }
+    .bench-name { font-size: .86rem; font-weight: 600; color: #c9d1d9; }
+    .bench-val  { font-family: 'JetBrains Mono', monospace; font-size: .78rem; color: #8b949e; }
+    .bench-track {
+      height: 9px;
+      background: rgba(48,54,61,.7);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .bench-fill {
+      height: 100%;
+      border-radius: 99px;
+      width: 0%;
+      transition: width 1.3s cubic-bezier(0.4,0,0.2,1);
+    }
+    .bf-green  { background: linear-gradient(90deg, #16a34a, #4ade80); }
+    .bf-gray   { background: linear-gradient(90deg, #374151, #6b7280); }
+    .bf-teal   { background: linear-gradient(90deg, #0e7490, #22d3ee); }
+    .bf-amber  { background: linear-gradient(90deg, #b45309, #f59e0b); }
+
+    /* ── Member GitHub Icon Button ── */
+    .gh-icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: rgba(48,54,61,.4);
+      border: 1px solid rgba(48,54,61,.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #6e7681;
+      text-decoration: none;
+      flex-shrink: 0;
+      transition: var(--transition);
+    }
+    .gh-icon-btn:hover {
+      background: rgba(34,197,94,.12);
+      border-color: rgba(34,197,94,.4);
+      color: #4ade80;
+      transform: scale(1.12) rotate(-4deg);
+    }
+    /* Member card avatar — fixed square, aligned top */
+    .avatar { border-radius: 16px !important; }
+    .member-card .avatar {
+      width: 76px;
+      height: 76px;
+      margin: 0;
+      align-self: flex-start;
+      flex-shrink: 0;
+    }
+
+    /* ── Team equal-height columns + internal alignment ── */
+    #team .col-md-6 { display: flex; }
+    #team .member-card { flex-grow: 1; display: flex; flex-direction: column; }
+    #team .member-card > div:nth-child(4) { flex-grow: 1; }
+
+    /* ── Inactive Member Card ── */
+    .member-card.member-inactive {
+      opacity: 0.7;
+      filter: grayscale(0.3);
+      pointer-events: none;
+    }
+    .member-card.member-inactive .gh-icon-btn {
+      pointer-events: auto;
+    }
+    .member-card.member-inactive::before {
+      content: '前任組長';
+      position: absolute;
+      top: 12px; right: 14px;
+      background: rgba(48,54,61,.7);
+      color: #6e7681;
+      font-size: .62rem;
+      font-family: 'JetBrains Mono', monospace;
+      padding: .15rem .55rem;
+      border-radius: 4px;
+      border: 1px solid rgba(48,54,61,.9);
+      letter-spacing: .04em;
+      z-index: 2;
+    }
+    .member-card.member-leader::before {
+      content: '組長';
+      position: absolute;
+      top: 12px; right: 14px;
+      background: rgba(251,191,36,.12);
+      color: #fbbf24;
+      font-size: .62rem;
+      font-family: 'JetBrains Mono', monospace;
+      padding: .15rem .55rem;
+      border-radius: 4px;
+      border: 1px solid rgba(251,191,36,.35);
+      letter-spacing: .04em;
+      z-index: 2;
+    }
+    .member-card.member-member::before {
+      content: '組員';
+      position: absolute;
+      top: 12px; right: 14px;
+      background: rgba(99,102,241,.12);
+      color: #818cf8;
+      font-size: .62rem;
+      font-family: 'JetBrains Mono', monospace;
+      padding: .15rem .55rem;
+      border-radius: 4px;
+      border: 1px solid rgba(99,102,241,.3);
+      letter-spacing: .04em;
+      z-index: 2;
+    }
+
+    /* ── Scroll Progress Bar ── */
+    .scroll-progress {
+      position: fixed;
+      top: 0; left: 0;
+      width: 0%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--brand-green), var(--brand-cyan), var(--brand-green-light));
+      background-size: 200% 100%;
+      animation: shimmer 2s linear infinite;
+      z-index: 9999;
+      pointer-events: none;
+      transition: width 0.08s linear;
+    }
+
+    /* ── Particle Canvas ── */
+    #particleCanvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .hero > .container { position: relative; z-index: 1; }
+
+    /* ── Hero Scan Lines ── */
+    .hero-scanlines {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent, transparent 3px,
+        rgba(34,197,94,0.012) 3px, rgba(34,197,94,0.012) 4px
+      );
+      animation: scan-move 8s linear infinite;
+    }
+    @keyframes scan-move {
+      from { background-position: 0 0; }
+      to   { background-position: 0 200px; }
+    }
+
+    /* ── Hero Title Glitch ── */
+    @keyframes glitch-title {
+      0%   { transform: translate(0) skewX(0);     filter: brightness(1); }
+      15%  { transform: translate(-4px,1px) skewX(-3deg); filter: brightness(1.5) hue-rotate(8deg); }
+      30%  { transform: translate(4px,-1px) skewX(2deg);  filter: brightness(0.75) saturate(1.5); }
+      45%  { transform: translate(-2px,2px) skewX(-1deg); filter: brightness(1.2); }
+      60%  { transform: translate(2px,0)  skewX(0.5deg);  filter: brightness(1); }
+      75%  { transform: translate(-1px,1px); }
+      100% { transform: translate(0) skewX(0);     filter: brightness(1); }
+    }
+    .hero-title.glitching {
+      animation: glitch-title 0.4s steps(5) forwards;
+    }
+
+    /* ── Pipeline Flow Dots ── */
+    .pipe-flow-sep {
+      position: relative;
+      width: 48px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .pipe-flow-sep::before {
+      content: '';
+      position: absolute;
+      left: 0; right: 0;
+      height: 1px;
+      top: 50%;
+      background: rgba(34,197,94,0.2);
+    }
+    .flow-dot {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--brand-green);
+      box-shadow: 0 0 8px var(--brand-green), 0 0 16px rgba(34,197,94,0.5);
+      animation: flow-dot 1.5s linear infinite;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .flow-dot:nth-child(2) { animation-delay: -0.5s; }
+    .flow-dot:nth-child(3) { animation-delay: -1s; }
+    @keyframes flow-dot {
+      0%   { left: -8px; opacity: 0; }
+      8%   { opacity: 1; }
+      92%  { opacity: 1; }
+      100% { left: 110%; opacity: 0; }
+    }
+
+    /* ── Terminal Wipe Reveal ── */
+    .terminal-typewriter { position: relative; }
+    .terminal-wipe {
+      position: absolute;
+      inset: 0;
+      background: #0d1117;
+      z-index: 3;
+      pointer-events: none;
+      border-radius: 14px;
+      transform-origin: top center;
+    }
+    .terminal-wipe.wipe-away {
+      animation: wipe-slide 2s cubic-bezier(0.4,0,0.2,1) forwards;
+    }
+    @keyframes wipe-slide {
+      0%   { clip-path: inset(0 0 0 0); }
+      100% { clip-path: inset(0 0 100% 0); }
+    }
+
+    /* ── Counter Number Pop ── */
+    @keyframes num-pop {
+      0%   { transform: scale(1); }
+      40%  { transform: scale(1.18); filter: brightness(1.5); }
+      100% { transform: scale(1); filter: brightness(1); }
+    }
+    .stat-num.popped { animation: num-pop 0.45s ease-out forwards; }
+  </style>
+</head>
+<body>
+
+  <!-- Scroll Progress Bar -->
+  <div class="scroll-progress" id="scrollProgress"></div>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loader-ring"></div>
+    <div class="loader-text">INITIALIZING...</div>
+  </div>
+
+  <!-- Scroll to Top -->
+  <button class="scroll-top" id="scrollTop" aria-label="回到頂部">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M12 19V5M5 12l7-7 7 7"/>
+    </svg>
+  </button>
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg fixed-top">
+    <div class="container">
+      <a class="navbar-brand" href="#home">BusyPipe<span>.sh</span></a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+              data-bs-target="#navMenu" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navMenu">
+        <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1">
+          <li class="nav-item"><a class="nav-link" href="#overview">簡介</a></li>
+          <li class="nav-item"><a class="nav-link" href="#highlights">亮點</a></li>
+          <li class="nav-item"><a class="nav-link" href="#pipeline">架構</a></li>
+          <li class="nav-item"><a class="nav-link" href="#quickstart">上手</a></li>
+          <li class="nav-item"><a class="nav-link" href="#benchmark">效能</a></li>
+          <li class="nav-item"><a class="nav-link" href="#slides">簡報</a></li>
+          <li class="nav-item"><a class="nav-link" href="#team">成員</a></li>
+          <li class="nav-item ms-lg-2">
+            <a href="https://github.com/DreamerForJay/busypipe" target="_blank"
+               class="btn btn-outline-green btn-pill" style="padding:.4rem 1.1rem;font-size:.85rem;">
+              <svg width="15" height="15" fill="currentColor" class="me-1" viewBox="0 0 16 16" style="vertical-align:-2px;">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+              </svg>
+              GitHub
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══════════════ HERO ═══════════════ -->
+  <header id="home" class="hero">
+    <canvas id="particleCanvas"></canvas>
+    <div class="hero-scanlines"></div>
+    <div class="container">
+      <div class="row align-items-center gy-5">
+
+        <div class="col-lg-7" data-aos="fade-right" data-aos-duration="900">
+          <div class="hero-badge mb-4">
+            <span class="pulse-dot"></span>
+            UNIX 系統程式設計 · 114-2 期末專題
+          </div>
+          <h1 class="hero-title mb-3" id="heroTitle">BusyPipe</h1>
+          <p class="fs-5 fw-light mb-2" style="color:#c9d1d9;">嵌入式資料管線工具鏈</p>
+
+          <div class="pipeline-badge my-4">
+            <span class="pipe-tool">lparser</span>
+            <span class="pipe-flow-sep"><span class="flow-dot"></span><span class="flow-dot"></span><span class="flow-dot"></span></span>
+            <span class="pipe-tool">lfilter</span>
+            <span class="pipe-flow-sep"><span class="flow-dot"></span><span class="flow-dot"></span><span class="flow-dot"></span></span>
+            <span class="pipe-tool">lstore</span>
+          </div>
+
+          <p class="hero-sub mb-5">
+            以 POSIX C11 打造的輕量 ETL 工具組，為資源受限的 BusyBox / Linux 環境設計。
+            三個小工具透過 UNIX pipe 串接，在無額外依賴的條件下完成日誌解析、過濾與持久化儲存。
+          </p>
+
+          <div class="d-flex flex-column flex-sm-row flex-wrap gap-3">
+            <a href="#overview" class="btn btn-green btn-pill">了解成果</a>
+            <a href="#slides" class="btn btn-outline-green btn-pill">觀看簡報</a>
+            <a href="https://github.com/DreamerForJay/busypipe" target="_blank"
+               class="btn btn-outline-dim btn-pill">GitHub 原始碼</a>
+          </div>
+        </div>
+
+        <!-- Stats card -->
+        <div class="col-lg-5" data-aos="fade-left" data-aos-duration="900" data-aos-delay="200">
+          <div class="stats-card p-4">
+            <p class="mb-4" style="font-size:0.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--brand-green);font-family:'JetBrains Mono',monospace;">
+              ⚡ Project Overview
+            </p>
+            <div class="row gy-4">
+              <div class="col-6" data-aos="zoom-in" data-aos-delay="300">
+                <div class="stat-num" data-count="3" data-suffix="">3</div>
+                <div class="stat-label"><b>核心工具</b><br/>lparser · lfilter · lstore</div>
+              </div>
+              <div class="col-6" data-aos="zoom-in" data-aos-delay="380">
+                <div class="stat-num" data-count="9" data-suffix="">9</div>
+                <div class="stat-label"><b>Smoke Tests</b><br/>make test 自動驗證</div>
+              </div>
+              <div class="col-6" data-aos="zoom-in" data-aos-delay="460">
+                <div class="stat-num" data-count="3" data-suffix="+">3+</div>
+                <div class="stat-label"><b>日誌格式</b><br/>nginx · apache · auth</div>
+              </div>
+              <div class="col-6" data-aos="zoom-in" data-aos-delay="540">
+                <div class="stat-num" data-count="50" data-suffix="k+">50k+</div>
+                <div class="stat-label"><b>行 / 秒</b><br/>優於 GNU awk 基準</div>
+              </div>
+            </div>
+            <hr style="border-color:rgba(48,54,61,.6);margin:1.2rem 0;" />
+            <p class="mb-0" style="font-size:0.8rem;color:#8b949e;line-height:1.65;">
+              🔧 可整合進 BusyBox 1.36 multi-call binary，
+              支援 <code style="color:var(--brand-green-light);font-family:'JetBrains Mono',monospace;font-size:.78rem;">make install</code>
+              與 man page 安裝。
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══════════════ OVERVIEW ═══════════════ -->
+  <section id="overview">
+    <div class="bg-pattern"></div>
+    <div class="container">
+      <div class="row align-items-start gy-5">
+
+        <div class="col-lg-6" data-aos="fade-up">
+          <h2 class="section-title">成果簡介</h2>
+          <p class="section-lead">BusyPipe 是什麼，以及我們解決了哪些問題。</p>
+          <div class="section-divider"></div>
+
+          <p style="line-height:1.85;color:#c9d1d9;">
+            在嵌入式 Linux / BusyBox 環境中，往往缺乏
+            <code class="tag-pill" style="font-size:.78rem;padding:.15rem .6rem;">awk</code>
+            <code class="tag-pill" style="font-size:.78rem;padding:.15rem .6rem;">grep</code>
+            <code class="tag-pill" style="font-size:.78rem;padding:.15rem .6rem;">Python</code>
+            等重量級工具，卻需要即時分析伺服器日誌、過濾異常事件並持久化儲存。
+          </p>
+          <p style="line-height:1.85;color:#c9d1d9;">
+            BusyPipe 以三個輕量 C 工具回應這個需求：透過標準 UNIX pipe 組合，
+            不需要任何外部依賴，便可在數 MB 記憶體的設備上完成完整 ETL 流程。
+          </p>
+          <p style="line-height:1.85;color:#c9d1d9;">
+            所有工具符合 POSIX C11 標準，並附有完整的 BusyBox applet 適配，
+            可直接編譯進 BusyBox multi-call binary，部署至嵌入式設備。
+          </p>
+
+          <div class="mt-4 d-flex flex-wrap gap-2">
+            <span class="tag-pill">POSIX C11</span>
+            <span class="tag-pill">BusyBox 1.36</span>
+            <span class="tag-pill">UNIX pipe</span>
+            <span class="tag-pill">regcomp / regexec</span>
+            <span class="tag-pill">CSV · JSONL</span>
+            <span class="tag-pill">TTL KV Store</span>
+          </div>
+        </div>
+
+        <div class="col-lg-6" data-aos="fade-up" data-aos-delay="150">
+          <div class="terminal terminal-typewriter" id="overviewTerminal">
+            <div class="terminal-wipe"></div>
+            <div class="terminal-bar">
+              <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#6e7681;margin-left:.6rem;">busypipe — pipeline demo</span>
+            </div>
+            <pre><code><span class="c-gray"># HTTP 錯誤分析管線</span>
+<span class="c-green">$</span> <span class="c-white">lparser --format nginx --csv \
+    &lt; samples/nginx.log \</span>
+  <span class="c-pipe">|</span> <span class="c-white">lfilter --where 'status&gt;=400' \
+           --select 'ip,path,status' \</span>
+  <span class="c-pipe">|</span> <span class="c-white">lstore  --db data/errors.tsv \
+           --put --key-field ip --ttl 3600</span>
+
+<span class="c-gray"># 查詢 KV Store</span>
+<span class="c-green">$</span> <span class="c-white">lstore --db data/errors.tsv --list</span>
+<span class="c-cyan">ip              path        status
+192.168.1.3     /admin      403
+10.0.0.2        /login      401
+172.16.0.8      /api/secret 500</span>
+
+<span class="c-gray"># SSH 失敗偵測</span>
+<span class="c-green">$</span> <span class="c-white">lparser --format auth --csv \
+    &lt; samples/auth.log \</span>
+  <span class="c-pipe">|</span> <span class="c-white">lfilter --contains 'result=Failed' \</span>
+  <span class="c-pipe">|</span> <span class="c-white">lstore --db data/ssh_fail.tsv \
+           --put --key-field src_ip --ttl 86400</span>
+</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ HIGHLIGHTS ═══════════════ -->
+  <section id="highlights" class="section-alt">
+    <div class="bg-pattern"></div>
+    <div class="container">
+      <div data-aos="fade-up">
+        <h2 class="section-title">專案亮點</h2>
+        <p class="section-lead">六個讓 BusyPipe 與眾不同的設計決策。</p>
+        <div class="section-divider"></div>
+      </div>
+
+      <div class="row gy-4">
+
+        <div class="col-md-6 col-lg-4" data-aos="fade-up" data-aos-delay="0">
+          <div class="card-dark p-4 h-100">
+            <div class="icon-box mb-3">⚙️</div>
+            <h5 class="fw-bold mb-2">POSIX C11 零依賴</h5>
+            <p class="mb-0" style="color:#8b949e;font-size:.92rem;line-height:1.7;">
+              只使用標準 C library 與 POSIX 介面，不依賴任何第三方套件。
+              可在任何符合標準的 UNIX 環境直接編譯，跨平台、跨發行版。
+            </p>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4" data-aos="fade-up" data-aos-delay="70">
+          <div class="card-dark p-4 h-100">
+            <div class="icon-box mb-3">🔗</div>
+            <h5 class="fw-bold mb-2">UNIX pipe 原生組合</h5>
+            <p class="mb-0" style="color:#8b949e;font-size:.92rem;line-height:1.7;">
+              每個工具嚴守「做好一件事」原則，透過 stdin / stdout 無縫串接。
+              可任意組合，也可與 shell 現有工具混搭使用。
+            </p>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4" data-aos="fade-up" data-aos-delay="140">
+          <div class="card-dark p-4 h-100">
+            <div class="icon-box mb-3">📦</div>
+            <h5 class="fw-bold mb-2">BusyBox 整合就緒</h5>
+            <p class="mb-0" style="color:#8b949e;font-size:.92rem;line-height:1.7;">
+              提供完整 BusyBox applet 適配版（<code style="font-family:'JetBrains Mono',monospace;font-size:.78rem;color:#4ade80;">*_bb.c</code>）
+              與共用函式庫 libpipe，可直接編譯進 BusyBox multi-call binary。
+            </p>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4" data-aos="fade-up" data-aos-delay="0">
+          <div class="card-dark p-4 h-100">
+            <div class="icon-box mb-3">🔍</div>
+            <h5 class="fw-bold mb-2">多格式日誌解析</h5>
+            <p class="mb-0" style="color:#8b949e;font-size:.92rem;line-height:1.7;">
+              內建 nginx、Apache、auth.log 三種預設格式，並支援
+              <code style="font-family:'JetBrains Mono',monospace;font-size:.78rem;color:#4ade80;">--regex + --fields</code>
+              自訂模式，輸出 CSV 或 JSONL。
+            </p>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4" data-aos="fade-up" data-aos-delay="70">
+          <div class="card-dark p-4 h-100">
+            <div class="icon-box mb-3">💾</div>
+            <h5 class="fw-bold mb-2">TTL 自動過期 KV Store</h5>
+            <p class="mb-0" style="color:#8b949e;font-size:.92rem;line-height:1.7;">
+              <code style="font-family:'JetBrains Mono',monospace;font-size:.78rem;color:#4ade80;">lstore</code> 提供完整 CRUD 與 TTL 到期清理，
+              以 <code style="font-family:'JetBrains Mono',monospace;font-size:.78rem;color:#4ade80;">rename()</code> atomic rewrite 確保資料一致性，
+              並支援 buffered write 提升吞吐量。
+            </p>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4" data-aos="fade-up" data-aos-delay="140">
+          <div class="card-dark p-4 h-100">
+            <div class="icon-box mb-3">⚡</div>
+            <h5 class="fw-bold mb-2">效能超越 GNU awk</h5>
+            <p class="mb-0" style="color:#8b949e;font-size:.92rem;line-height:1.7;">
+              在 50,000 行日誌的解析過濾場景中，BusyPipe pipeline 吞吐量
+              優於等效 GNU awk 指令，且記憶體用量顯著更低。
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ PIPELINE ARCH ═══════════════ -->
+  <section id="pipeline">
+    <div class="bg-pattern"></div>
+    <div class="container">
+      <div data-aos="fade-up">
+        <h2 class="section-title">架構設計</h2>
+        <p class="section-lead">三個工具如何分工協作，組成完整的 ETL 管線。</p>
+        <div class="section-divider"></div>
+      </div>
+
+      <div class="row gy-4 mb-5">
+
+        <!-- lparser -->
+        <div class="col-lg-4" data-aos="fade-right">
+          <div class="card-dark p-4 h-100">
+            <div class="d-flex align-items-center gap-3 mb-4">
+              <div class="d-flex align-items-center justify-content-center rounded-circle fw-bold text-white"
+                   style="width:32px;height:32px;background:var(--brand-green);font-size:.85rem;flex-shrink:0;">1</div>
+              <code style="font-family:'JetBrains Mono',monospace;color:#4ade80;font-size:1.1rem;font-weight:700;">lparser</code>
+              <span style="color:#6e7681;font-size:.8rem;">原始日誌解析器</span>
+            </div>
+            <div class="pipe-step mb-0">
+              <div class="task-item"><span class="task-dot">▸</span>從 stdin 讀取原始日誌</div>
+              <div class="task-item"><span class="task-dot">▸</span>POSIX regex 欄位擷取</div>
+              <div class="task-item"><span class="task-dot">▸</span>輸出 CSV（含 header）或 JSONL</div>
+              <div class="task-item"><span class="task-dot">▸</span>nginx / apache / auth 預設格式</div>
+              <div class="task-item"><span class="task-dot">▸</span><code style="font-size:.75rem;font-family:'JetBrains Mono',monospace;color:#4ade80;">--stats</code> matched / skipped 統計</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- lfilter -->
+        <div class="col-lg-4" data-aos="fade-up" data-aos-delay="100">
+          <div class="card-dark p-4 h-100">
+            <div class="d-flex align-items-center gap-3 mb-4">
+              <div class="d-flex align-items-center justify-content-center rounded-circle fw-bold text-white"
+                   style="width:32px;height:32px;background:var(--brand-green);font-size:.85rem;flex-shrink:0;">2</div>
+              <code style="font-family:'JetBrains Mono',monospace;color:#4ade80;font-size:1.1rem;font-weight:700;">lfilter</code>
+              <span style="color:#6e7681;font-size:.8rem;">CSV 串流過濾器</span>
+            </div>
+            <div class="pipe-step mb-0">
+              <div class="task-item"><span class="task-dot">▸</span>數值比較 <code style="font-size:.75rem;font-family:'JetBrains Mono',monospace;color:#4ade80;">--where 'status&gt;=400'</code></div>
+              <div class="task-item"><span class="task-dot">▸</span>子字串過濾 <code style="font-size:.75rem;font-family:'JetBrains Mono',monospace;color:#4ade80;">--contains</code></div>
+              <div class="task-item"><span class="task-dot">▸</span>欄位投影 <code style="font-size:.75rem;font-family:'JetBrains Mono',monospace;color:#4ade80;">--select</code></div>
+              <div class="task-item"><span class="task-dot">▸</span>支援 6 種比較運算子</div>
+              <div class="task-item"><span class="task-dot">▸</span>CSV / JSONL 雙輸出格式</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- lstore -->
+        <div class="col-lg-4" data-aos="fade-left" data-aos-delay="200">
+          <div class="card-dark p-4 h-100">
+            <div class="d-flex align-items-center gap-3 mb-4">
+              <div class="d-flex align-items-center justify-content-center rounded-circle fw-bold text-white"
+                   style="width:32px;height:32px;background:var(--brand-green);font-size:.85rem;flex-shrink:0;">3</div>
+              <code style="font-family:'JetBrains Mono',monospace;color:#4ade80;font-size:1.1rem;font-weight:700;">lstore</code>
+              <span style="color:#6e7681;font-size:.8rem;">持久化 KV Store</span>
+            </div>
+            <div class="pipe-step mb-0">
+              <div class="task-item"><span class="task-dot">▸</span>完整 CRUD：put / get / delete / list</div>
+              <div class="task-item"><span class="task-dot">▸</span>TTL 自動過期與 cleanup</div>
+              <div class="task-item"><span class="task-dot">▸</span>atomic rewrite（rename()）</div>
+              <div class="task-item"><span class="task-dot">▸</span>buffered write（64行 / 128KiB）</div>
+              <div class="task-item"><span class="task-dot">▸</span><code style="font-size:.75rem;font-family:'JetBrains Mono',monospace;color:#4ade80;">--stats</code> 操作統計</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Demo terminals -->
+      <div class="row gy-4">
+        <div class="col-lg-6" data-aos="fade-up">
+          <div class="terminal">
+            <div class="terminal-bar">
+              <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#6e7681;margin-left:.6rem;">Pipeline 1 — HTTP 錯誤分析</span>
+            </div>
+            <pre><code><span class="c-gray"># 解析 → 過濾 4xx/5xx → 寫入 KV store</span>
+<span class="c-green">$</span> lparser --format nginx --csv \
+    &lt; samples/nginx.log \
+  <span class="c-pipe">|</span> lfilter --where 'status&gt;=400' \
+           --select 'ip,path,status' \
+  <span class="c-pipe">|</span> lstore --db data/errors.tsv \
+           --put --key-field ip --ttl 3600
+
+<span class="c-green">$</span> lstore --db data/errors.tsv --get 192.168.1.3
+<span class="c-cyan">192.168.1.3  /admin  403  1719500000</span></code></pre>
+          </div>
+        </div>
+        <div class="col-lg-6" data-aos="fade-up" data-aos-delay="100">
+          <div class="terminal">
+            <div class="terminal-bar">
+              <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#6e7681;margin-left:.6rem;">Pipeline 2 — SSH 失敗登入偵測</span>
+            </div>
+            <pre><code><span class="c-gray"># auth.log → 只保留失敗 → 記錄來源 IP</span>
+<span class="c-green">$</span> lparser --format auth --csv \
+    &lt; samples/auth.log \
+  <span class="c-pipe">|</span> lfilter --contains 'result=Failed' \
+  <span class="c-pipe">|</span> lstore --db data/ssh_fail.tsv \
+           --put --key-field src_ip --ttl 86400
+
+<span class="c-green">$</span> lstore --db data/ssh_fail.tsv --list
+<span class="c-cyan">10.0.0.8   Failed  root  1719500000
+203.0.113.5  Failed  admin  1719500012</span></code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ QUICK START ═══════════════ -->
+  <section id="quickstart" class="section-alt">
+    <div class="bg-pattern"></div>
+    <div class="container">
+      <div data-aos="fade-up">
+        <h2 class="section-title">快速上手</h2>
+        <p class="section-lead">從取得原始碼到跑完完整管線，四步搞定。</p>
+        <div class="section-divider"></div>
+      </div>
+
+      <div class="row gy-4 mb-5">
+        <div class="col-sm-6 col-lg-3" data-aos="fade-up" data-aos-delay="0">
+          <div class="card-dark p-4 h-100">
+            <div class="qs-num">01</div>
+            <h6 class="fw-bold mb-2">取得原始碼</h6>
+            <p class="mb-0" style="color:#8b949e;font-size:.88rem;line-height:1.7;">
+              Clone GitHub 儲存庫或下載 Release 壓縮檔到本機或嵌入式設備。
+            </p>
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-3" data-aos="fade-up" data-aos-delay="70">
+          <div class="card-dark p-4 h-100">
+            <div class="qs-num">02</div>
+            <h6 class="fw-bold mb-2">編譯</h6>
+            <p class="mb-0" style="color:#8b949e;font-size:.88rem;line-height:1.7;">
+              任何 POSIX Linux 環境執行
+              <code style="font-family:'JetBrains Mono',monospace;color:#4ade80;font-size:.8rem;">make</code>，
+              零外部依賴，幾秒內完成。
+            </p>
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-3" data-aos="fade-up" data-aos-delay="140">
+          <div class="card-dark p-4 h-100">
+            <div class="qs-num">03</div>
+            <h6 class="fw-bold mb-2">驗證</h6>
+            <p class="mb-0" style="color:#8b949e;font-size:.88rem;line-height:1.7;">
+              執行
+              <code style="font-family:'JetBrains Mono',monospace;color:#4ade80;font-size:.8rem;">make test</code>
+              跑 9 個 smoke test，確認三工具均正常。
+            </p>
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-3" data-aos="fade-up" data-aos-delay="210">
+          <div class="card-dark p-4 h-100">
+            <div class="qs-num">04</div>
+            <h6 class="fw-bold mb-2">使用</h6>
+            <p class="mb-0" style="color:#8b949e;font-size:.88rem;line-height:1.7;">
+              透過 UNIX pipe 串接三個工具，即可建立完整的日誌分析管線。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="row justify-content-center" data-aos="fade-up" data-aos-delay="100">
+        <div class="col-lg-10">
+          <div class="terminal">
+            <div class="terminal-bar">
+              <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#6e7681;margin-left:.6rem;">bash — build &amp; run</span>
+            </div>
+            <pre><code><span class="c-gray"># 1. 取得原始碼</span>
+<span class="c-green">$</span> <span class="c-white">git clone https://github.com/DreamerForJay/busypipe.git && cd busypipe</span>
+
+<span class="c-gray"># 2. 編譯（需要 gcc 與 POSIX make）</span>
+<span class="c-green">$</span> <span class="c-white">make</span>
+<span class="c-cyan">CC  src/lparser.c  →  build/lparser
+CC  src/lfilter.c  →  build/lfilter
+CC  src/lstore.c   →  build/lstore
+✓  Build complete.</span>
+
+<span class="c-gray"># 3. 執行 smoke test（9 個場景）</span>
+<span class="c-green">$</span> <span class="c-white">make test</span>
+<span class="c-cyan">✓  lparser nginx CSV         PASS
+✓  lparser auth JSONL        PASS
+✓  lfilter --where status    PASS
+✓  lfilter --contains result PASS
+✓  lfilter --select fields   PASS
+✓  lstore  put / get         PASS
+✓  lstore  delete            PASS
+✓  lstore  cleanup TTL       PASS
+✓  pipeline end-to-end       PASS
+9/9 tests passed.</span>
+
+<span class="c-gray"># 4. 執行完整管線</span>
+<span class="c-green">$</span> <span class="c-white">lparser --format nginx --csv &lt; samples/nginx.log \</span>
+  <span class="c-pipe">|</span> <span class="c-white">lfilter --where 'status&gt;=400' \</span>
+  <span class="c-pipe">|</span> <span class="c-white">lstore --db data/errors.tsv --put --key-field ip --ttl 3600</span>
+<span class="c-green">$</span> <span class="c-white">lstore --db data/errors.tsv --count</span>
+<span class="c-cyan">3 records</span></code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ BENCHMARK ═══════════════ -->
+  <section id="benchmark">
+    <div class="bg-pattern"></div>
+    <div class="container">
+      <div data-aos="fade-up">
+        <h2 class="section-title">效能對比</h2>
+        <p class="section-lead">
+          BusyPipe vs GNU awk — 50,000 行 nginx 日誌的代表性基準測試，
+          以 <code style="font-family:'JetBrains Mono',monospace;font-size:.9rem;color:#4ade80;">scripts/benchmark.sh --lines 50000 --repeat 5</code> 取平均值。
+        </p>
+        <div class="section-divider"></div>
+      </div>
+
+      <div class="row gy-4">
+        <div class="col-lg-6" data-aos="fade-right">
+          <div class="card-dark p-4 p-lg-5 h-100">
+            <h6 class="fw-bold mb-4" style="color:#4ade80;">⚡ 解析吞吐量（行 / 秒）</h6>
+            <div class="bench-row">
+              <div class="bench-header">
+                <span class="bench-name">BusyPipe <code style="font-size:.75rem;font-family:'JetBrains Mono',monospace;">lparser</code></span>
+                <span class="bench-val">52,400</span>
+              </div>
+              <div class="bench-track"><div class="bench-fill bf-green" data-width="88"></div></div>
+            </div>
+            <div class="bench-row">
+              <div class="bench-header">
+                <span class="bench-name">GNU awk</span>
+                <span class="bench-val">37,800</span>
+              </div>
+              <div class="bench-track"><div class="bench-fill bf-gray" data-width="64"></div></div>
+            </div>
+            <hr style="border-color:rgba(48,54,61,.5);margin:1.6rem 0 1.4rem;">
+            <h6 class="fw-bold mb-4" style="color:#4ade80;">⚡ 過濾吞吐量（行 / 秒）</h6>
+            <div class="bench-row">
+              <div class="bench-header">
+                <span class="bench-name">BusyPipe <code style="font-size:.75rem;font-family:'JetBrains Mono',monospace;">lfilter</code></span>
+                <span class="bench-val">89,200</span>
+              </div>
+              <div class="bench-track"><div class="bench-fill bf-green" data-width="94"></div></div>
+            </div>
+            <div class="bench-row">
+              <div class="bench-header">
+                <span class="bench-name">GNU awk（條件過濾）</span>
+                <span class="bench-val">71,500</span>
+              </div>
+              <div class="bench-track"><div class="bench-fill bf-gray" data-width="76"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6" data-aos="fade-left">
+          <div class="card-dark p-4 p-lg-5 h-100">
+            <h6 class="fw-bold mb-4" style="color:#4ade80;">
+              💾 記憶體峰值（MB）
+              <small style="color:#6e7681;font-weight:400;font-size:.78rem;margin-left:.4rem;">越低越好</small>
+            </h6>
+            <div class="bench-row">
+              <div class="bench-header">
+                <span class="bench-name">BusyPipe pipeline</span>
+                <span class="bench-val">2.4 MB</span>
+              </div>
+              <div class="bench-track"><div class="bench-fill bf-teal" data-width="22"></div></div>
+            </div>
+            <div class="bench-row">
+              <div class="bench-header">
+                <span class="bench-name">GNU awk equivalent</span>
+                <span class="bench-val">8.1 MB</span>
+              </div>
+              <div class="bench-track"><div class="bench-fill bf-amber" data-width="74"></div></div>
+            </div>
+            <hr style="border-color:rgba(48,54,61,.5);margin:1.6rem 0 1.4rem;">
+            <h6 class="fw-bold mb-4" style="color:#4ade80;">⏱️ 端對端管線時間（ms，50k 行）</h6>
+            <div class="bench-row">
+              <div class="bench-header">
+                <span class="bench-name">BusyPipe 三工具串接</span>
+                <span class="bench-val">~950 ms</span>
+              </div>
+              <div class="bench-track"><div class="bench-fill bf-teal" data-width="41"></div></div>
+            </div>
+            <div class="bench-row">
+              <div class="bench-header">
+                <span class="bench-name">GNU awk 腳本</span>
+                <span class="bench-val">~1,320 ms</span>
+              </div>
+              <div class="bench-track"><div class="bench-fill bf-amber" data-width="57"></div></div>
+            </div>
+            <p class="mb-0 mt-4" style="font-size:.76rem;color:#6e7681;line-height:1.65;">
+              測試環境：Linux 6.6 · x86_64 · 單核 · samples/ 樣本放大至 50,000 行。
+              數值為代表性結果，實際效能因硬體與系統負載而異。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ SLIDES ═══════════════ -->
+  <section id="slides" class="section-alt">
+    <div class="bg-pattern"></div>
+    <div class="container">
+      <div data-aos="fade-up">
+        <h2 class="section-title">📊 專題簡報</h2>
+        <p class="section-lead">完整期末報告投影片，包含架構設計、實作細節與 Demo 成果。</p>
+        <div class="section-divider"></div>
+      </div>
+      <div class="row justify-content-center">
+        <div class="col-12 col-lg-11" data-aos="zoom-in" data-aos-delay="150">
+
+          <!--
+            ══════════════════════════════════════════════════
+            TODO: 將下方 src 換成你的 Canva 嵌入連結
+            步驟：Canva → 分享 → 更多 → 嵌入 → 複製 iframe src
+            格式：https://www.canva.com/design/XXXXXX/view?embed
+            ══════════════════════════════════════════════════
+          -->
+          <div class="ratio ratio-16x9 slides-wrap" id="slidesWrap">
+            <iframe
+              id="canvaFrame"
+              src="https://www.canva.com/design/DAHKsXHnZZM/Y3W5lLmNlCshvHFW66682A/view"
+              allow="fullscreen"
+              allowfullscreen
+              loading="lazy"
+              title="BusyPipe 期末簡報"
+              style="border:none;border-radius:inherit;"
+            ></iframe>
+            <!-- Fallback -->
+            <div id="canvaFallback"
+                 class="d-none position-absolute inset-0 d-flex flex-column align-items-center justify-content-center"
+                 style="inset:0;background:rgba(22,27,34,.97);">
+              <svg width="56" height="56" fill="none" stroke="#30363d" stroke-width="1.5" viewBox="0 0 24 24" class="mb-3">
+                <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+              </svg>
+              <p class="fw-semibold mb-1" style="color:#8b949e;">簡報嵌入連結尚未設定</p>
+              <p class="mb-0" style="font-size:.82rem;color:#6e7681;">請在 index.html 中替換 Canva embed src</p>
+            </div>
+          </div>
+
+          <p class="text-center mt-3" style="font-size:.82rem;color:#6e7681;font-family:'JetBrains Mono',monospace;">
+            Powered by Canva
+            &nbsp;·&nbsp;
+            <a id="slidesExtLink" href="#" target="_blank" style="color:var(--brand-green);text-decoration:none;">在新分頁開啟 ↗</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ TEAM ═══════════════ -->
+  <section id="team">
+    <div class="bg-pattern"></div>
+    <div class="container">
+      <div data-aos="fade-up">
+        <h2 class="section-title">團隊成員</h2>
+        <div class="section-divider"></div>
+      </div>
+
+      <div class="row gy-4 gx-4">
+
+        <!-- 羅章弘 -->
+        <div class="col-md-6" data-aos="fade-up" data-aos-delay="80">
+          <!-- TODO: 將 data-github 填入羅章弘的 GitHub 帳號 -->
+          <div class="member-card member-leader p-4 h-100" data-github="" style="--accent-grad: linear-gradient(90deg, #3b82f6, #60a5fa);">
+            <div class="d-flex gap-3 mb-3">
+              <div class="d-flex flex-column align-items-center gap-2" style="flex-shrink:0;width:76px;">
+                <div class="avatar" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);">羅</div>
+              </div>
+              <div class="flex-grow-1 min-w-0">
+                <div class="d-flex align-items-center mb-1" style="gap:1rem">
+                  <h5 class="fw-bold mb-0" style="font-size:1.1rem;">羅章弘</h5>
+                  <!-- TODO: 將 href 換成羅章弘的 GitHub 連結 -->
+                  <a href="https://github.com/Risto8456" target="_blank" class="gh-icon-btn" title="GitHub">
+                    <svg width="15" height="15" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-2 mt-1">
+              <div class="role-badge" style="background:rgba(59,130,246,.1);color:#93c5fd;border:1px solid rgba(59,130,246,.25);">解析專家</div>
+            </div>
+
+            <div style="height:1px;background:rgba(59,130,246,.18);margin-bottom:1rem;border-radius:1px;"></div>
+            <div class="mb-3">
+              <div class="task-item"><span class="task-dot" style="color:#60a5fa;">▸</span>src/lparser.c 完整開發</div>
+              <div class="task-item"><span class="task-dot" style="color:#60a5fa;">▸</span>POSIX regex 解析引擎（regcomp / regexec）</div>
+              <div class="task-item"><span class="task-dot" style="color:#60a5fa;">▸</span>nginx / apache / auth 預設格式</div>
+              <div class="task-item"><span class="task-dot" style="color:#60a5fa;">▸</span>CSV 輸出（含 header）/ JSONL 輸出</div>
+              <div class="task-item"><span class="task-dot" style="color:#60a5fa;">▸</span>--stats matched / skipped 統計</div>
+              <div class="task-item"><span class="task-dot" style="color:#60a5fa;">▸</span>製作簡報與書面報告</div>
+            </div>
+            <div style="padding-top:.75rem;border-top:1px solid rgba(48,54,61,.5);">
+              <span class="issue-tag">issue #1</span>
+              <span class="issue-tag">issue #2</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 潘彥霖 -->
+        <div class="col-md-6" data-aos="fade-up" data-aos-delay="80">
+          <!-- TODO: 將 data-github 填入潘彥霖的 GitHub 帳號 -->
+          <div class="member-card member-member p-4 h-100" data-github="" style="--accent-grad: linear-gradient(90deg, #f97316, #fb923c);">
+            <div class="d-flex gap-3 mb-3">
+              <div class="d-flex flex-column align-items-center gap-2" style="flex-shrink:0;width:76px;">
+                <div class="avatar" style="background:linear-gradient(135deg,#c2410c,#f97316);">潘</div>
+              </div>
+              <div class="flex-grow-1 min-w-0">
+                <div class="d-flex align-items-center mb-1" style="gap:1rem">
+                  <h5 class="fw-bold mb-0" style="font-size:1.1rem;">潘彥霖</h5>
+                  <!-- TODO: 將 href 換成潘彥霖的 GitHub 連結 -->
+                  <a href="https://github.com/brian940424" target="_blank" class="gh-icon-btn" title="GitHub">
+                    <svg width="15" height="15" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-2 mt-1">
+              <div class="role-badge" style="background:rgba(249,115,22,.1);color:#fdba74;border:1px solid rgba(249,115,22,.25);">儲存架構師</div>
+            </div>
+            
+            <div style="height:1px;background:rgba(249,115,22,.18);margin-bottom:1rem;border-radius:1px;"></div>
+            <div class="mb-3">
+              <div class="task-item"><span class="task-dot" style="color:#fb923c;">▸</span>src/lstore.c 完整開發</div>
+              <div class="task-item"><span class="task-dot" style="color:#fb923c;">▸</span>CRUD 全套：put / get / delete / list / count</div>
+              <div class="task-item"><span class="task-dot" style="color:#fb923c;">▸</span>TTL 自動過期與 cleanup</div>
+              <div class="task-item"><span class="task-dot" style="color:#fb923c;">▸</span>Atomic rewrite（rename() + cross-device fallback）</div>
+              <div class="task-item"><span class="task-dot" style="color:#fb923c;">▸</span>Buffered write（64 行 / 128 KiB flush）</div>
+              <div class="task-item"><span class="task-dot" style="color:#fb923c;">▸</span>製作簡報與書面報告
+              </div>
+            </div>
+            <div style="padding-top:.75rem;border-top:1px solid rgba(48,54,61,.5);">
+              <span class="issue-tag">issue #4</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 吳佳泰 -->
+        <div class="col-md-6" data-aos="fade-up" data-aos-delay="0">
+          <!-- TODO: 將 data-github 填入吳佳泰的 GitHub 帳號 -->
+          <div class="member-card member-member p-4 h-100" data-github="" style="--accent-grad: linear-gradient(90deg, #a855f7, #c084fc);">
+            <div class="d-flex gap-3 mb-3">
+              <div class="d-flex flex-column align-items-center gap-2" style="flex-shrink:0;width:76px;">
+                <div class="avatar" style="background:linear-gradient(135deg,#7e22ce,#a855f7);">吳</div>
+              </div>
+              <div class="flex-grow-1 min-w-0">
+                <div class="d-flex align-items-center mb-1" style="gap:1rem">
+                  <h5 class="fw-bold mb-0" style="font-size:1.1rem;">吳佳泰</h5>
+                  <!-- TODO: 將 href 換成吳佳泰的 GitHub 連結 -->
+                  <a href="https://github.com/taitaiwu" target="_blank" class="gh-icon-btn" title="GitHub">
+                    <svg width="15" height="15" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-2 mt-1">
+              <div class="role-badge" style="background:rgba(168,85,247,.1);color:#d8b4fe;border:1px solid rgba(168,85,247,.25);">串流邏輯官</div>
+            </div>
+
+            <div style="height:1px;background:rgba(168,85,247,.18);margin-bottom:1rem;border-radius:1px;"></div>
+            <div class="mb-3">
+              <div class="task-item"><span class="task-dot" style="color:#c084fc;">▸</span>src/lfilter.c 完整開發</div>
+              <div class="task-item"><span class="task-dot" style="color:#c084fc;">▸</span>--where 6 種比較運算子（數值 / 字串）</div>
+              <div class="task-item"><span class="task-dot" style="color:#c084fc;">▸</span>--contains 子字串過濾</div>
+              <div class="task-item"><span class="task-dot" style="color:#c084fc;">▸</span>--select 欄位投影</div>
+              <div class="task-item"><span class="task-dot" style="color:#c084fc;">▸</span>腳本測試與跨平臺測試</div>
+              <div class="task-item"><span class="task-dot" style="color:#c084fc;">▸</span>製作簡報、書面報告與網頁</div>
+            </div>
+            <div style="padding-top:.75rem;border-top:1px solid rgba(48,54,61,.5);">
+              <span class="issue-tag">issue #3</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 楊杰倫 -->
+        <div class="col-md-6" data-aos="fade-up" data-aos-delay="0">
+          <!-- TODO: 將 data-github 填入楊杰倫的 GitHub 帳號，例如 data-github="DreamerForJay" -->
+          <div class="member-card member-inactive p-4 h-100" data-github="" style="--accent-grad: linear-gradient(90deg, #22c55e, #06b6d4);">
+            <div class="d-flex gap-3 mb-3">
+              <div class="d-flex flex-column align-items-center gap-2" style="flex-shrink:0;width:76px;">
+                <div class="avatar" style="background:linear-gradient(135deg,#16a34a,#22c55e);">楊</div>
+              </div>
+              <div class="flex-grow-1 min-w-0">
+                <div class="d-flex align-items-center mb-1" style="gap:1rem">
+                  <h5 class="fw-bold mb-0" style="font-size:1.1rem;">楊杰倫</h5>
+                  <!-- TODO: 將 href 換成楊杰倫的 GitHub 連結 -->
+                  <a href="https://github.com/DreamerForJay" target="_blank" class="gh-icon-btn" title="GitHub">
+                    <svg width="15" height="15" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div class="mb-2 mt-1">
+              <div class="role-badge" style="background:rgba(34,197,94,.1);color:#4ade80;border:1px solid rgba(34,197,94,.25);">系統整合與測試</div>
+            </div>
+            <div style="height:1px;background:rgba(34,197,94,.18);margin-bottom:1rem;border-radius:1px;"></div>
+            <div class="mb-3">
+              <div class="task-item"><span class="task-dot">▸</span>初步專題構想與規劃</div>
+              <div class="task-item"><span class="task-dot">▸</span>初期 GitHub 建置與管理</div>
+              <div class="task-item"><span class="task-dot">▸</span>初期簡報與書面報告製作</div>
+            </div>
+            <div style="padding-top:.75rem;border-top:1px solid rgba(48,54,61,.5);">
+              <span class="issue-tag">issue #4</span>
+              <span class="issue-tag">issue #5</span>
+              <span class="issue-tag">issue #6</span>
+              <span class="issue-tag">issue #7</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="text-center">
+    <div class="container">
+      <p class="mb-1" style="color:#c9d1d9;font-weight:600;">
+        BusyPipe · 114-2 UNIX 系統程式設計期末專題
+      </p>
+      <p class="mb-0" style="font-size:.85rem;">
+        楊杰倫 · 羅章弘 · 吳佳泰 · 潘彥霖
+        &nbsp;·&nbsp;
+        <a href="https://github.com/DreamerForJay/busypipe" target="_blank"
+           style="color:var(--brand-green);text-decoration:none;">GitHub ↗</a>
+      </p>
+    </div>
+  </footer>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- AOS -->
+  <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+
+  <script>
+    // AOS init
+    AOS.init({
+      duration: 750,
+      easing: 'ease-out-cubic',
+      once: true,
+      offset: 80,
+      disable: window.innerWidth < 768
+    });
+
+    // Loading overlay
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        document.getElementById('loadingOverlay').classList.add('hidden');
+      }, 600);
+    });
+
+    // Navbar scroll
+    const navbar = document.querySelector('.navbar');
+    window.addEventListener('scroll', () => {
+      navbar.classList.toggle('scrolled', window.scrollY > 60);
+    }, { passive: true });
+
+    // Scroll-to-top
+    const scrollBtn = document.getElementById('scrollTop');
+    window.addEventListener('scroll', () => {
+      scrollBtn.classList.toggle('visible', window.scrollY > 320);
+    }, { passive: true });
+    scrollBtn.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // Smooth scroll for nav links
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        const target = document.querySelector(a.getAttribute('href'));
+        if (!target) return;
+        e.preventDefault();
+        window.scrollTo({ top: target.offsetTop - 76, behavior: 'smooth' });
+        const collapse = document.querySelector('.navbar-collapse');
+        if (collapse.classList.contains('show')) {
+          bootstrap.Collapse.getInstance(collapse)?.hide();
+        }
+      });
+    });
+
+    // Active nav on scroll
+    const sections = document.querySelectorAll('section[id], header[id]');
+    const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
+    window.addEventListener('scroll', () => {
+      let current = '';
+      sections.forEach(s => {
+        if (window.scrollY >= s.offsetTop - 100) current = s.id;
+      });
+      navLinks.forEach(l => {
+        l.classList.toggle('active', l.getAttribute('href') === '#' + current);
+      });
+    }, { passive: true });
+
+    // ── Scroll Progress Bar ──
+    const progressBar = document.getElementById('scrollProgress');
+    window.addEventListener('scroll', () => {
+      const total = document.documentElement.scrollHeight - window.innerHeight;
+      progressBar.style.width = (window.scrollY / total * 100) + '%';
+    }, { passive: true });
+
+    // ── Particle Canvas ──
+    (function () {
+      const canvas = document.getElementById('particleCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const hero = canvas.parentElement;
+
+      function resize() {
+        canvas.width  = hero.offsetWidth;
+        canvas.height = hero.offsetHeight;
+      }
+      resize();
+      window.addEventListener('resize', resize, { passive: true });
+
+      const CHARS = ['0','1','{','}','|','>','$','#','%','<','/','\\'];
+      const COUNT = 60;
+      const particles = Array.from({ length: COUNT }, () => ({
+        x:    Math.random() * canvas.width,
+        y:    Math.random() * canvas.height,
+        vy:   -(0.25 + Math.random() * 0.6),
+        size: 10 + Math.floor(Math.random() * 6),
+        char: CHARS[Math.floor(Math.random() * CHARS.length)],
+        alpha: 0.04 + Math.random() * 0.1,
+      }));
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach(p => {
+          ctx.font = `${p.size}px 'JetBrains Mono', monospace`;
+          ctx.fillStyle = `rgba(34,197,94,${p.alpha})`;
+          ctx.fillText(p.char, p.x, p.y);
+          p.y += p.vy;
+          if (p.y < -20) {
+            p.y = canvas.height + 10;
+            p.x = Math.random() * canvas.width;
+            p.char = CHARS[Math.floor(Math.random() * CHARS.length)];
+          }
+        });
+        requestAnimationFrame(draw);
+      }
+      draw();
+    })();
+
+    // ── Hero Title Glitch ──
+    (function () {
+      const title = document.getElementById('heroTitle');
+      if (!title) return;
+      function glitch() {
+        title.classList.add('glitching');
+        setTimeout(() => title.classList.remove('glitching'), 450);
+        setTimeout(glitch, 4000 + Math.random() * 5000);
+      }
+      setTimeout(glitch, 3000);
+    })();
+
+    // ── Stats Counter ──
+    (function () {
+      const items = document.querySelectorAll('[data-count]');
+      if (!items.length) return;
+      const obs = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          const el     = entry.target;
+          const target = parseInt(el.dataset.count, 10);
+          const suffix = el.dataset.suffix || '';
+          const dur    = 1100;
+          const fps    = 16;
+          const steps  = dur / fps;
+          let cur = 0;
+          const timer = setInterval(() => {
+            cur += target / steps;
+            if (cur >= target) {
+              cur = target;
+              clearInterval(timer);
+              el.classList.add('popped');
+              setTimeout(() => el.classList.remove('popped'), 500);
+            }
+            el.textContent = Math.floor(cur) + suffix;
+          }, fps);
+          obs.unobserve(el);
+        });
+      }, { threshold: 0.6 });
+      items.forEach(el => obs.observe(el));
+    })();
+
+    // ── Benchmark Bars ──
+    (function () {
+      const cards = document.querySelectorAll('#benchmark .card-dark');
+      if (!cards.length) return;
+      const obs = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          entry.target.querySelectorAll('.bench-fill[data-width]').forEach(el => {
+            el.style.width = el.dataset.width + '%';
+          });
+          obs.unobserve(entry.target);
+        });
+      }, { threshold: 0.4 });
+      cards.forEach(c => obs.observe(c));
+    })();
+
+    // ── Terminal Wipe Reveal ──
+    (function () {
+      const terminal = document.getElementById('overviewTerminal');
+      if (!terminal) return;
+      const wipe = terminal.querySelector('.terminal-wipe');
+      const obs = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          setTimeout(() => wipe.classList.add('wipe-away'), 200);
+          obs.unobserve(entry.target);
+        });
+      }, { threshold: 0.35 });
+      obs.observe(terminal);
+    })();
+
+    // ── GitHub Profile Cards ──
+    (function () {
+      document.querySelectorAll('.member-card').forEach(async (card) => {
+        // Accept username from data-github OR extract from the gh-icon-btn href
+        let username = (card.dataset.github || '').trim();
+        if (!username) {
+          const btn = card.querySelector('.gh-icon-btn');
+          const m = btn && btn.href.match(/github\.com\/([^/?#\s]+)/);
+          if (m && m[1] !== '') username = m[1];
+        }
+        if (!username) return;
+
+        const avatarEl = card.querySelector('.avatar');
+        if (avatarEl) avatarEl.classList.add('gh-loading');
+
+        try {
+          const res = await fetch(`https://api.github.com/users/${username}`);
+          if (!res.ok) throw new Error('not found');
+          const d = await res.json();
+
+          // Update avatar with real photo
+          if (avatarEl && d.avatar_url) {
+            const img = new Image();
+            img.alt = d.name || username;
+            img.onload = () => {
+              avatarEl.innerHTML = '';
+              avatarEl.classList.remove('gh-loading');
+              avatarEl.appendChild(img);
+              requestAnimationFrame(() => img.classList.add('loaded'));
+            };
+            img.onerror = () => avatarEl.classList.remove('gh-loading');
+            img.src = d.avatar_url + '&s=128';
+          }
+
+          // Bio — 插在名字行之後、角色標籤之前
+          if (d.bio) {
+            const bio = document.createElement('p');
+            bio.className = 'member-gh-bio';
+            bio.textContent = d.bio;
+            const h5 = card.querySelector('h5');
+            const nameRow = h5 && h5.closest('.d-flex');
+            if (nameRow) nameRow.after(bio);
+          }
+
+          // Update name to GitHub login
+          const nameEl = card.querySelector('h5');
+          if (nameEl) nameEl.textContent = d.login;
+
+          // Update GitHub icon link href
+          const ghBtn = card.querySelector('.gh-icon-btn');
+          if (ghBtn) ghBtn.href = d.html_url;
+
+        } catch {
+          if (avatarEl) avatarEl.classList.remove('gh-loading');
+        }
+      });
+    })();
+
+    // Canva embed fallback
+    (function () {
+      const frame = document.getElementById('canvaFrame');
+      const fallback = document.getElementById('canvaFallback');
+      const extLink = document.getElementById('slidesExtLink');
+      if (frame.src.includes('REPLACE_WITH_YOUR_CANVA_EMBED_ID')) {
+        frame.style.display = 'none';
+        fallback.classList.remove('d-none');
+        fallback.style.display = 'flex';
+        extLink.setAttribute('href', '#slides');
+      } else {
+        extLink.setAttribute('href', frame.src.replace('?embed', ''));
+      }
+    })();
+  </script>
+</body>
+</html>
