@@ -642,6 +642,18 @@
     }
 
     /* ── Responsive ── */
+
+    /* min-w-0 utility (Bootstrap 5 不含此 class，但 HTML 有使用) */
+    .min-w-0 { min-width: 0; }
+
+    /* Navbar: 11+ 項目在 992–1299px 會溢出 — 縮小間距 */
+    @media (min-width: 992px) and (max-width: 1299px) {
+      .nav-link { padding: 0.3rem 0.45rem !important; font-size: 0.8rem; }
+      .navbar-brand { font-size: 1rem; }
+      .navbar .btn-pill { padding: 0.35rem 0.75rem !important; font-size: 0.78rem; }
+    }
+
+    /* 平板：navbar collapse 樣式 + section padding */
     @media (max-width: 991px) {
       .navbar-collapse {
         margin-top: 0.8rem;
@@ -650,21 +662,50 @@
         border-radius: 12px;
         border: 1px solid var(--brand-border);
       }
+      :root { --section-padding: 4.5rem; }
     }
+
+    /* 手機 ≤ 768px */
     @media (max-width: 768px) {
       :root { --section-padding: 3.5rem; }
       .hero { min-height: auto; padding-top: 5rem; }
       .hero-title { font-size: 2rem; }
-      .btn-pill { width: 100%; }
+      /* 移除全局 btn-pill width:100%，讓 flex-column/flex-sm-row 自然處理 */
       .slides-wrap:hover { transform: scale(1); }
       .card-dark:hover { transform: translateY(-3px); }
       .member-card:hover { transform: translateY(-4px); }
       .stats-card:hover { transform: translateY(-4px); }
     }
+
+    /* 小手機 ≤ 576px */
     @media (max-width: 576px) {
       .hero-title { font-size: 1.7rem; }
       .section-title { font-size: 1.5rem; }
+      .section-lead { font-size: 0.92rem; }
+      /* Hero 按鈕在 xs（flex-column 直排）全寬 */
+      .hero .d-flex .btn-pill { width: 100%; }
+      /* 數字統計縮小 */
+      .stat-num { font-size: 1.5rem; }
+      .stat-label { word-break: break-word; }
+      /* Terminal 字體縮小、padding 收緊 */
+      .terminal pre { padding: 0.85rem 0.9rem; font-size: 0.72rem; }
+      /* Pipeline badge 動畫分隔符太寬，小螢幕隱藏 */
+      .pipe-flow-sep { display: none; }
+      /* Benchmark */
+      .bench-name { font-size: 0.78rem; }
+      .bench-val  { font-size: 0.7rem; }
+      /* Member card avatar 縮小 */
+      .member-card .avatar { width: 60px; height: 60px; font-size: 1.3rem; }
+      /* Quick Start 步驟數字縮小 */
+      .qs-num { width: 44px; height: 44px; font-size: 1.3rem; }
     }
+
+    /* sm+ 時 hero 按鈕回 auto（取消 xs 的全寬設定） */
+    @media (min-width: 576px) {
+      .hero .d-flex .btn-pill { width: auto; }
+    }
+
+    /* 觸控裝置 */
     @media (hover: none) and (pointer: coarse) {
       * { -webkit-tap-highlight-color: transparent; }
       .btn-pill:active { transform: scale(0.96); }
