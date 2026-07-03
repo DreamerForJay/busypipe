@@ -1324,6 +1324,27 @@
           </div>
         </div>
 
+        <!-- 全寬亮點：獨立可用 -->
+        <div class="col-12" data-aos="fade-up" data-aos-delay="0">
+          <div class="card-dark p-4" style="border-color:rgba(34,197,94,.22);background:rgba(34,197,94,.03);">
+            <div class="d-flex align-items-start gap-3">
+              <div class="icon-box" style="flex-shrink:0;">🧩</div>
+              <div>
+                <h5 class="fw-bold mb-1">三工具皆可單獨使用，也可自由與 shell 工具組合</h5>
+                <p class="mb-0" style="color:#8b949e;font-size:.92rem;line-height:1.75;">
+                  每個工具以 <code style="font-family:'JetBrains Mono',monospace;color:#4ade80;font-size:.8rem;">stdin</code> /
+                  <code style="font-family:'JetBrains Mono',monospace;color:#4ade80;font-size:.8rem;">stdout</code> 作為唯一介面，不依賴彼此。
+                  可單獨執行，也可與
+                  <code style="font-family:'JetBrains Mono',monospace;color:#4ade80;font-size:.8rem;">cut</code>、
+                  <code style="font-family:'JetBrains Mono',monospace;color:#4ade80;font-size:.8rem;">sort</code>、
+                  <code style="font-family:'JetBrains Mono',monospace;color:#4ade80;font-size:.8rem;">grep</code>
+                  等任意 shell 工具串接，或組成完整三段管線——選擇權完全在使用者。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </section>
@@ -1527,6 +1548,71 @@
           </div>
         </div>
       </div>
+
+      <!-- 各工具獨立使用範例 -->
+      <div class="mt-5" data-aos="fade-up">
+        <div class="d-flex align-items-center gap-2 mb-4">
+          <span style="width:3px;height:1.1rem;background:var(--brand-green);border-radius:2px;display:inline-block;flex-shrink:0;"></span>
+          <span style="font-size:.8rem;font-weight:600;color:#8b949e;letter-spacing:.08em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;">各工具亦可獨立執行 — 不依賴彼此</span>
+        </div>
+        <div class="row gy-3">
+
+          <div class="col-md-4" data-aos="fade-up" data-aos-delay="0">
+            <div class="terminal" style="font-size:.7rem;">
+              <div class="terminal-bar">
+                <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#6e7681;margin-left:.5rem;">lparser 單獨使用</span>
+              </div>
+              <pre style="margin:0;"><code><span class="c-gray"># 只解析，輸出 CSV 存檔</span>
+<span class="c-green">$</span> <span class="c-white">lparser --format nginx --csv \
+    &lt; access.log &gt; out.csv</span>
+
+<span class="c-gray"># 自訂 regex + JSONL 輸出</span>
+<span class="c-green">$</span> <span class="c-white">lparser \
+  --regex '(\d+) \[(\w+)\] (.+)' \
+  --fields 'ts,level,msg' \
+  --jsonl &lt; app.log</span></code></pre>
+            </div>
+          </div>
+
+          <div class="col-md-4" data-aos="fade-up" data-aos-delay="60">
+            <div class="terminal" style="font-size:.7rem;">
+              <div class="terminal-bar">
+                <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#6e7681;margin-left:.5rem;">lfilter 接任意 CSV</span>
+              </div>
+              <pre style="margin:0;"><code><span class="c-gray"># 接 cut 輸出同樣有效</span>
+<span class="c-green">$</span> <span class="c-white">cut -d',' -f1,3 data.csv \</span>
+  <span class="c-pipe">|</span> <span class="c-white">lfilter --where 'status&gt;=400'</span>
+
+<span class="c-gray"># 對現有 CSV 直接過濾</span>
+<span class="c-green">$</span> <span class="c-white">lfilter \
+  --contains 'ERROR' \
+  --select 'ts,msg' &lt; parsed.csv</span></code></pre>
+            </div>
+          </div>
+
+          <div class="col-md-4" data-aos="fade-up" data-aos-delay="120">
+            <div class="terminal" style="font-size:.7rem;">
+              <div class="terminal-bar">
+                <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#6e7681;margin-left:.5rem;">lstore 單獨查詢 / 管理</span>
+              </div>
+              <pre style="margin:0;"><code><span class="c-gray"># 查詢 / 列表 / 統計</span>
+<span class="c-green">$</span> <span class="c-white">lstore --db data.tsv --get 10.0.0.1</span>
+<span class="c-green">$</span> <span class="c-white">lstore --db data.tsv --list</span>
+<span class="c-green">$</span> <span class="c-white">lstore --db data.tsv --stats</span>
+<span class="c-cyan">total: 16  active: 4  expired: 12</span>
+
+<span class="c-gray"># 清除過期記錄</span>
+<span class="c-green">$</span> <span class="c-white">lstore --db data.tsv --cleanup</span>
+<span class="c-cyan">Removed 12 expired records.</span></code></pre>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </div>
   </section>
 
@@ -2053,7 +2139,7 @@ lstore</span>
           <div class="ratio ratio-16x9 slides-wrap" id="slidesWrap">
             <iframe
               id="canvaFrame"
-              src="https://www.canva.com/design/DAHKsXHnZZM/Y3W5lLmNlCshvHFW66682A/view"
+              src="https://www.canva.com/design/DAHIXfy1ALs/Rl261bF85OV-LES-UUMnHQ/view?embed"
               allow="fullscreen"
               allowfullscreen
               loading="lazy"
